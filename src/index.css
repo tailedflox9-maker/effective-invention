@@ -1,0 +1,540 @@
+/* src/index.css (Updated with improved reading themes) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Base Layer & Theming
+   ========================================================================== */
+@layer base {
+  ::selection {
+    background-color: #3B82F6; /* Blue-500 */
+    color: #FFFFFF;
+  }
+
+  :root {
+    /* Core Color Palette */
+    --color-bg: #0A0A0A;
+    --color-sidebar: #141414;
+    --color-card: #1F1F1F;
+    --color-border: #2A2A2A;
+    --color-text-primary: #FFFFFF;
+    --color-text-secondary: #A0A0A0;
+    --color-text-placeholder: #6B7280;
+
+    /* Accent Colors */
+    --color-accent-primary: #3B82F6; /* blue-500 */
+    --color-accent-primary-hover: #2563EB; /* blue-600 */
+    --color-accent-secondary: #10B981; /* green-500 */
+    --color-accent-danger: #EF4444; /* red-500 */
+    --color-accent-warning: #F59E0B; /* amber-500 */
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-[var(--color-bg)] text-[var(--color-text-primary)] antialiased;
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ==========================================================================
+   Components Layer
+   ========================================================================== */
+@layer components {
+  /* --- Scrollbar --- */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background-color: var(--color-border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--color-text-secondary); }
+  * { scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+
+  /* --- Keyframe Animations --- */
+  @keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: calc(200px + 100%) 0; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes pulse { 50% { opacity: 0.7; } }
+  @keyframes subtle-glow {
+    0% { box-shadow: 0 0 20px 0px rgba(59, 130, 246, 0.1); }
+    50% { box-shadow: 0 0 35px 5px rgba(59, 130, 246, 0.15); }
+    100% { box-shadow: 0 0 20px 0px rgba(59, 130, 246, 0.1); }
+  }
+
+  /* --- Animation Utilities --- */
+  .animate-shimmer { background: linear-gradient(90deg, var(--color-border) 25%, var(--color-card) 50%, var(--color-border) 75%); background-size: 200px 100%; animation: shimmer 1.5s infinite; }
+  .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+  .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+  .animate-pulse-subtle { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  .animate-subtle-glow { animation: subtle-glow 5s ease-in-out infinite; }
+
+
+  /* --- Layout --- */
+  .app-container { height: 100vh; height: 100dvh; display: flex; overflow: hidden; position: relative; }
+  .main-content { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+
+  /* --- Buttons --- */
+  .btn { @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--color-bg)]; }
+  .btn-primary { @apply bg-white text-black hover:bg-gray-200 focus:ring-white; }
+  .btn-secondary { @apply bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white focus:ring-white; }
+  .btn-danger { @apply bg-[var(--color-accent-danger)] text-white hover:bg-red-600 focus:ring-[var(--color-accent-danger)]; }
+  .btn-ghost { @apply text-gray-400 hover:text-white hover:bg-[var(--color-card)] focus:ring-gray-500; }
+  .btn-sm { @apply px-3 py-1.5 text-sm; }
+  .btn-lg { @apply px-6 py-3 text-lg; }
+  .btn:disabled { @apply opacity-50 cursor-not-allowed; }
+
+  /* --- Forms --- */
+  .input-style { @apply w-full bg-gray-900/50 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:border-transparent transition-colors; }
+  .textarea-style { @apply input-style min-h-[120px] resize-none; }
+  .select-style { @apply input-style appearance-none; }
+
+  /* --- Cards --- */
+  .content-card { @apply bg-black/20 border border-white/10 rounded-xl shadow-lg backdrop-blur-sm; }
+  .stats-card { @apply bg-black/20 border border-white/10 rounded-xl p-5 shadow-lg backdrop-blur-sm transition-all hover:border-white/20 hover:-translate-y-1; }
+
+  /* --- Sidebar --- */
+  .sidebar {
+    @apply bg-[var(--color-sidebar)] flex flex-col h-full border-r border-[var(--color-border)] transition-all duration-300 ease-in-out;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 20;
+  }
+  @media (min-width: 1024px) {
+    .sidebar {
+      position: static;
+      width: 16rem;
+    }
+    .sidebar.sidebar-folded {
+      width: 4.5rem;
+    }
+  }
+  @media (max-width: 1023px) {
+    .sidebar {
+      position: fixed;
+      width: 280px;
+      left: 0;
+      top: 0;
+      z-index: 50;
+      transform: translateX(-100%);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .sidebar.sidebar-open {
+      transform: translateX(0);
+    }
+  }
+
+  /* --- Modal --- */
+  .modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm;
+    animation: fadeIn 0.2s ease-out;
+  }
+  .modal-content {
+    @apply relative w-full max-w-lg bg-[var(--color-sidebar)] border border-[var(--color-border)] rounded-2xl shadow-2xl flex flex-col max-h-[90vh];
+    animation: fadeInUp 0.3s ease-out forwards;
+  }
+
+  /* --- Progress Bar --- */
+  .progress-bar { @apply w-full bg-gray-700/50 rounded-full h-1.5 overflow-hidden; }
+  .progress-bar-fill { @apply bg-blue-500 h-full rounded-full transition-all duration-500; }
+  
+  /* --- Utility --- */
+  .text-gradient { @apply bg-gradient-to-r from-blue-400 to-green-400 bg-clip-text text-transparent; }
+
+  /* --- Accessibility --- (FIXED) */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ==========================================================================
+   Enhanced Reading Mode Styles
+   ========================================================================== */
+.reading-container {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth scrolling for fullscreen reading */
+.reading-container.fullscreen {
+  scroll-behavior: smooth;
+  animation: fullscreenEntry 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* Fullscreen entry animation */
+@keyframes fullscreenEntry {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Custom scrollbar for reading mode */
+.reading-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.reading-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.reading-container::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  transition: background-color 0.3s ease;
+}
+
+.reading-container::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Reading settings panel animations (overrides default) */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* Smooth button hover animations */
+.reading-controls-btn {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.reading-controls-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Enhanced typography for reading */
+.reading-container article {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  hyphens: auto;
+  word-wrap: break-word;
+}
+
+/* Improved paragraph spacing */
+.reading-container article p {
+  margin-bottom: 1.5em;
+}
+
+/* Better heading hierarchy */
+.reading-container article h1 {
+  margin-top: 0;
+  margin-bottom: 1em;
+  font-weight: 700;
+}
+
+.reading-container article h2 {
+  margin-top: 2em;
+  margin-bottom: 0.75em;
+  font-weight: 600;
+}
+
+.reading-container article h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+/* Improved list styling */
+.reading-container article ul,
+.reading-container article ol {
+  margin-bottom: 1.5em;
+  padding-left: 1.5em;
+}
+
+.reading-container article li {
+  margin-bottom: 0.5em;
+  line-height: inherit;
+}
+
+/* Enhanced blockquote styling */
+.reading-container article blockquote {
+  margin: 2em 0;
+  padding: 1.5em 2em;
+  border-left: 4px solid currentColor;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+/* Code block improvements */
+.reading-container article pre {
+  margin: 2em 0;
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+.reading-container article code {
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+}
+
+.reading-container article :not(pre) > code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+/* Table improvements */
+.reading-container article table {
+  margin: 2em 0;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.reading-container article th,
+.reading-container article td {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.75em 1em;
+  text-align: left;
+}
+
+.reading-container article th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+
+/* Image improvements */
+.reading-container article img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 2em 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Link styling */
+.reading-container article a {
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.reading-container article a:hover {
+  border-bottom-color: currentColor;
+}
+
+/* Focus styles for accessibility */
+.reading-container button:focus,
+.reading-container input:focus {
+  outline: 2px solid #60A5FA;
+  outline-offset: 2px;
+}
+
+/* Mobile-specific reading improvements */
+@media (max-width: 768px) {
+  .reading-container article {
+    padding: 1.5rem 1rem !important;
+  }
+  
+  .reading-container article h1 {
+    font-size: 1.75em;
+  }
+  
+  .reading-container article h2 {
+    font-size: 1.5em;
+  }
+  
+  .reading-container article h3 {
+    font-size: 1.25em;
+  }
+  
+  /* Adjust settings panel for mobile */
+  .reading-container .settings-panel {
+    right: 0.5rem;
+    left: 0.5rem;
+    width: auto;
+    max-width: none;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .reading-container article {
+    color: #FFFFFF;
+  }
+  
+  .reading-container article a {
+    color: #87CEEB;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .reading-container * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  .reading-container {
+    scroll-behavior: auto;
+  }
+}
+
+/* Print styles */
+@media print {
+  .reading-container button,
+  .reading-container .fixed {
+    display: none !important;
+  }
+  
+  .reading-container article {
+    color: black !important;
+    background: white !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  .reading-container article a {
+    color: black !important;
+    text-decoration: underline !important;
+  }
+}
+
+/* ==========================================================================
+   Reading Mode Theme-Specific Fixes (UPDATED - Only 2 themes now)
+   ========================================================================== */
+
+/* Fix for text selection color in different themes */
+.theme-dark ::selection {
+  background-color: #3B82F6; /* Dark theme accent */
+  color: #FFFFFF;
+}
+
+.theme-sepia ::selection {
+  background-color: #8B5A2B; /* Sepia theme accent - darker brown for better visibility */
+  color: #FFFFFF;
+}
+
+/* Theme-specific link colors */
+.theme-dark article a {
+  color: #60A5FA; /* blue-400 */
+}
+.theme-dark article a:hover {
+  color: #93C5FD; /* blue-300 */
+}
+
+.theme-sepia article a {
+  color: #8B5A2B; /* Darker brown for better visibility */
+}
+.theme-sepia article a:hover {
+  color: #A0522D; /* Slightly lighter on hover */
+}
+
+/* ==========================================================================
+   SEPIA THEME HEADING FIXES
+   ========================================================================== */
+.theme-sepia article h1,
+.theme-sepia article h2,
+.theme-sepia article h3,
+.theme-sepia article h4,
+.theme-sepia article h5,
+.theme-sepia article h6 {
+  color: #2F1B14 !important; /* Very dark brown for excellent contrast */
+  font-weight: 700; /* Make headings bolder */
+}
+
+.theme-sepia article h1 {
+  color: #1A0E0A !important; /* Even darker for h1 */
+  font-weight: 800;
+}
+
+.theme-sepia article h2 {
+  color: #2F1B14 !important;
+  font-weight: 700;
+}
+
+.theme-sepia article strong,
+.theme-sepia article b {
+  color: #2F1B14 !important;
+  font-weight: 700;
+}
+
+/* Enhanced sepia blockquote */
+.theme-sepia article blockquote {
+  background: rgba(139, 90, 43, 0.08);
+  border-left-color: #8B5A2B;
+  color: #3C2A1E;
+}
+
+/* Sepia code styling */
+.theme-sepia article :not(pre) > code {
+  background: rgba(139, 90, 43, 0.12);
+  color: #2F1B14;
+  font-weight: 600;
+}
+
+/* Sepia table styling */
+.theme-sepia article th {
+  background: rgba(139, 90, 43, 0.08);
+  color: #2F1B14;
+  font-weight: 700;
+}
+
+.theme-sepia article th,
+.theme-sepia article td {
+  border-color: #D4C4A8;
+}
+
+/* Dark theme improvements */
+.theme-dark article blockquote {
+  background: rgba(59, 130, 246, 0.05);
+  border-left-color: #3B82F6;
+}

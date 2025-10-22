@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/white-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Pustakam: AI Book Generation Engine</title>
+    <meta name="description" content="Transform ideas into structured digital books with AI. A private, local-first app for creating and analyzing content." />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://pustakam-ai.vercel.app/" />
+    <meta property="og:title" content="Pustakam: AI Book Generation Engine" />
+    <meta property="og:description" content="Transform ideas into structured digital books with AI. A private, local-first app for creating and analyzing content." />
+    <meta property="og:image" content="https://pustakam-ai.vercel.app/pustakam-logo.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Pustakam: AI Book Generation Engine" />
+    <meta name="twitter:description" content="Transform ideas into structured digital books with AI. A private, local-first app for creating and analyzing content." />
+    <meta name="twitter:image" content="https://pustakam-ai.vercel.app/pustakam-logo.png" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#374151" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Pustakam" />
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="/pustakam-logo.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/pustakam-logo.png" />
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('SW registered: ', registration);
+            })
+            .catch(registrationError => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

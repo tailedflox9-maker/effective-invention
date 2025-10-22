@@ -1,0 +1,27 @@
+{
+  "name": "Pustakam: AI Book Generation Engine",
+  "short_name": "Pustakam",
+  "description": "Transform ideas into structured digital books with AI. A private, local-first app for creating and analyzing content.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#374151",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/pustakam-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/pustakam-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ]
+}
