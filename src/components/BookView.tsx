@@ -1,4 +1,4 @@
-// src/components/BookView.tsx
+// src/components/BookView.tsx (Complete with Recovery UI)
 import React, { useEffect, ReactNode, useMemo, useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -24,6 +24,7 @@ interface BookViewProps {
   currentBookId: string | null;
   onCreateBookRoadmap: (session: BookSession) => Promise<void>;
   onGenerateAllModules: (book: BookProject, session: BookSession) => Promise<void>;
+  onRetryFailedModules: (book: BookProject, session: BookSession) => Promise<void>;
   onAssembleBook: (book: BookProject, session: BookSession) => Promise<void>;
   onSelectBook: (id: string | null) => void;
   onDeleteBook: (id: string) => void;
@@ -224,7 +225,6 @@ const DetailTabButton = ({
   </button>
 );
 
-// Enhanced ReadingMode component with improved UX
 interface ReadingModeProps {
   content: string;
   isEditing: boolean;
@@ -251,8 +251,7 @@ const THEMES = {
     text: '#E5E5E5',
     secondary: '#A0A0A0',
     border: '#333333',
-    // CHANGE THIS LINE FOR DARK THEME ACCENT COLOR
-    accent: '#6B7280' // gray-500, or choose any other gray shade like '#4B5563' (gray-600)
+    accent: '#6B7280'
   },
   sepia: {
     bg: '#F5F1E8',
@@ -260,7 +259,7 @@ const THEMES = {
     text: '#3C2A1E',
     secondary: '#8B7355',
     border: '#D4C4A8',
-    accent: '#B45309' // amber-700
+    accent: '#B45309'
   }
 };
 
@@ -292,11 +291,10 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
   const settingsTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Load settings from localStorage with defaults
   const [settings, setSettings] = useState<ReadingSettings>(() => {
     const saved = localStorage.getItem('pustakam-reading-settings');
     const parsed = saved ? JSON.parse(saved) : {};
-    if (parsed.theme === 'light') parsed.theme = 'dark'; // Fallback if old 'light' theme is saved
+    if (parsed.theme === 'light') parsed.theme = 'dark';
     return {
       fontSize: 18,
       lineHeight: 1.7,
@@ -308,46 +306,33 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
     };
   });
 
-  // Save settings to localStorage
   useEffect(() => {
     localStorage.setItem('pustakam-reading-settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Scroll progress tracking
   useEffect(() => {
     if (!isFullscreen) return;
-
     const handleScroll = () => {
       const scrollTop = window.scrollY;
       const docHeight = document.documentElement.scrollHeight - window.innerHeight;
       const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
-      
       setScrollProgress(progress);
       setShowScrollTop(scrollTop > 500);
     };
-
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [isFullscreen]);
 
-  // Auto-hide settings panel
   useEffect(() => {
     if (showSettings) {
-      if (settingsTimeoutRef.current) {
-        clearTimeout(settingsTimeoutRef.current);
-      }
-      settingsTimeoutRef.current = setTimeout(() => {
-        setShowSettings(false);
-      }, 5000); // Hide after 5 seconds of inactivity
+      if (settingsTimeoutRef.current) clearTimeout(settingsTimeoutRef.current);
+      settingsTimeoutRef.current = setTimeout(() => setShowSettings(false), 5000);
     }
     return () => {
-      if (settingsTimeoutRef.current) {
-        clearTimeout(settingsTimeoutRef.current);
-      }
+      if (settingsTimeoutRef.current) clearTimeout(settingsTimeoutRef.current);
     };
   }, [showSettings]);
 
-  // Prevent body scroll when fullscreen
   useEffect(() => {
     if (isFullscreen) {
       document.body.style.overflow = 'hidden';
@@ -356,17 +341,14 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
     }
-
     return () => {
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
     };
   }, [isFullscreen]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     if (!isFullscreen) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsFullscreen(false);
@@ -385,30 +367,16 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
         }
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen]);
 
   const currentTheme = THEMES[settings.theme];
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const updateSetting = <K extends keyof ReadingSettings>(
-    key: K,
-    value: ReadingSettings[K]
-  ) => {
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  const updateSetting = <K extends keyof ReadingSettings>(key: K, value: ReadingSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
-    
-    // Reset auto-hide timer when user interacts with settings
-    if (settingsTimeoutRef.current) {
-      clearTimeout(settingsTimeoutRef.current);
-    }
-    settingsTimeoutRef.current = setTimeout(() => {
-      setShowSettings(false);
-    }, 5000);
+    if (settingsTimeoutRef.current) clearTimeout(settingsTimeoutRef.current);
+    settingsTimeoutRef.current = setTimeout(() => setShowSettings(false), 5000);
   };
 
   if (isEditing) {
@@ -455,172 +423,71 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
     padding: isFullscreen ? '3rem 2rem' : undefined,
     margin: isFullscreen ? '0 auto' : undefined,
     borderRadius: isFullscreen ? '0' : undefined,
-    boxShadow: isFullscreen && settings.theme !== 'light' 
-      ? '0 0 80px rgba(0,0,0,0.5)' 
-      : isFullscreen 
-      ? '0 0 40px rgba(0,0,0,0.1)' 
-      : undefined
+    boxShadow: isFullscreen && settings.theme !== 'light' ? '0 0 80px rgba(0,0,0,0.5)' : isFullscreen ? '0 0 40px rgba(0,0,0,0.1)' : undefined
   };
 
   return (
     <div className={`reading-container theme-${settings.theme} ${isFullscreen ? 'fixed inset-0 z-50 overflow-y-auto' : ''}`} style={fullscreenStyles}>
-      {/* Progress bar for fullscreen */}
       {isFullscreen && (
-        <div 
-          className="fixed top-0 left-0 h-1 z-50 transition-all duration-200"
-          style={{ 
-            width: `${scrollProgress}%`,
-            backgroundColor: currentTheme.accent 
-          }}
-        />
+        <div className="fixed top-0 left-0 h-1 z-50 transition-all duration-200" style={{ width: `${scrollProgress}%`, backgroundColor: currentTheme.accent }} />
       )}
 
-      {/* Controls */}
       {isFullscreen ? (
         <>
-          {/* Main toolbar */}
           <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
-            <button 
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-3 rounded-xl transition-all duration-200"
-              style={{ 
-                backgroundColor: showSettings ? currentTheme.accent : 'rgba(0,0,0,0.7)',
-                color: showSettings ? 'white' : currentTheme.text,
-                backdropFilter: 'blur(10px)'
-              }}
-              title="Reading settings"
-            >
+            <button onClick={() => setShowSettings(!showSettings)} className="p-3 rounded-xl transition-all duration-200" style={{ backgroundColor: showSettings ? currentTheme.accent : 'rgba(0,0,0,0.7)', color: showSettings ? 'white' : currentTheme.text, backdropFilter: 'blur(10px)' }} title="Reading settings">
               <Settings size={18} />
             </button>
-            <button 
-              onClick={onEdit}
-              className="p-3 rounded-xl transition-all duration-200"
-              style={{ 
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                color: currentTheme.text,
-                backdropFilter: 'blur(10px)'
-              }}
-              title="Edit content"
-            >
+            <button onClick={onEdit} className="p-3 rounded-xl transition-all duration-200" style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: currentTheme.text, backdropFilter: 'blur(10px)' }} title="Edit content">
               <Edit size={18} />
             </button>
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="p-3 rounded-xl transition-all duration-200"
-              style={{ 
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                color: currentTheme.text,
-                backdropFilter: 'blur(10px)'
-              }}
-              title="Exit fullscreen (Esc)"
-            >
+            <button onClick={() => setIsFullscreen(false)} className="p-3 rounded-xl transition-all duration-200" style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: currentTheme.text, backdropFilter: 'blur(10px)' }} title="Exit fullscreen (Esc)">
               <Minimize2 size={18} />
             </button>
           </div>
 
-          {/* Settings panel */}
           {showSettings && (
-            <div 
-              className="fixed top-16 right-4 z-50 p-6 rounded-2xl shadow-2xl min-w-[280px] animate-fade-in-up"
-              style={{ 
-                backgroundColor: currentTheme.contentBg,
-                border: `1px solid ${currentTheme.border}`,
-                color: currentTheme.text,
-                backdropFilter: 'blur(20px)'
-              }}
-              onMouseEnter={() => {
-                if (settingsTimeoutRef.current) {
-                  clearTimeout(settingsTimeoutRef.current);
-                }
-              }}
-              onMouseLeave={() => {
-                settingsTimeoutRef.current = setTimeout(() => {
-                  setShowSettings(false);
-                }, 2000);
-              }}
-            >
+            <div className="fixed top-16 right-4 z-50 p-6 rounded-2xl shadow-2xl min-w-[280px] animate-fade-in-up" style={{ backgroundColor: currentTheme.contentBg, border: `1px solid ${currentTheme.border}`, color: currentTheme.text, backdropFilter: 'blur(20px)' }}>
               <h4 className="font-semibold mb-4 flex items-center gap-2">
                 <BookOpen size={16} />
                 Reading Settings
               </h4>
               
-              {/* Font Size */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Font Size</label>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => updateSetting('fontSize', Math.max(12, settings.fontSize - 1))}
-                    className="p-2 rounded-lg transition-colors"
-                    style={{ backgroundColor: currentTheme.bg }}
-                  >
+                  <button onClick={() => updateSetting('fontSize', Math.max(12, settings.fontSize - 1))} className="p-2 rounded-lg transition-colors" style={{ backgroundColor: currentTheme.bg }}>
                     <ZoomOut size={14} />
                   </button>
                   <span className="min-w-[3rem] text-center font-mono">{settings.fontSize}px</span>
-                  <button
-                    onClick={() => updateSetting('fontSize', Math.min(28, settings.fontSize + 1))}
-                    className="p-2 rounded-lg transition-colors"
-                    style={{ backgroundColor: currentTheme.bg }}
-                  >
+                  <button onClick={() => updateSetting('fontSize', Math.min(28, settings.fontSize + 1))} className="p-2 rounded-lg transition-colors" style={{ backgroundColor: currentTheme.bg }}>
                     <ZoomIn size={14} />
                   </button>
                 </div>
               </div>
 
-              {/* Line Height */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Line Spacing</label>
-                <input
-                  type="range"
-                  min="1.2"
-                  max="2.2"
-                  step="0.1"
-                  value={settings.lineHeight}
-                  onChange={(e) => updateSetting('lineHeight', parseFloat(e.target.value))}
-                  className="w-full"
-                  style={{ accentColor: currentTheme.accent }}
-                />
+                <input type="range" min="1.2" max="2.2" step="0.1" value={settings.lineHeight} onChange={(e) => updateSetting('lineHeight', parseFloat(e.target.value))} className="w-full" style={{ accentColor: currentTheme.accent }} />
                 <div className="text-xs opacity-70 mt-1">{settings.lineHeight.toFixed(1)}</div>
               </div>
 
-              {/* Font Family */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Font Style</label>
                 <div className="grid grid-cols-3 gap-1">
                   {(['serif', 'sans', 'mono'] as const).map((font) => (
-                    <button
-                      key={font}
-                      onClick={() => updateSetting('fontFamily', font)}
-                      className={`p-2 text-xs rounded-lg transition-all ${
-                        settings.fontFamily === font ? 'font-semibold' : ''
-                      }`}
-                      style={{
-                        backgroundColor: settings.fontFamily === font ? currentTheme.accent : currentTheme.bg,
-                        color: settings.fontFamily === font ? 'white' : currentTheme.text,
-                        fontFamily: FONT_FAMILIES[font]
-                      }}
-                    >
+                    <button key={font} onClick={() => updateSetting('fontFamily', font)} className={`p-2 text-xs rounded-lg transition-all ${settings.fontFamily === font ? 'font-semibold' : ''}`} style={{ backgroundColor: settings.fontFamily === font ? currentTheme.accent : currentTheme.bg, color: settings.fontFamily === font ? 'white' : currentTheme.text, fontFamily: FONT_FAMILIES[font] }}>
                       {font === 'serif' ? 'Serif' : font === 'sans' ? 'Sans' : 'Mono'}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Theme */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Theme</label>
                 <div className="flex gap-1">
                   {(['dark', 'sepia'] as const).map((theme) => (
-                    <button
-                      key={theme}
-                      onClick={() => updateSetting('theme', theme)}
-                      className={`flex-1 p-2 text-xs rounded-lg transition-all flex items-center justify-center gap-1 ${
-                        settings.theme === theme ? 'font-semibold' : ''
-                      }`}
-                      style={{
-                        backgroundColor: settings.theme === theme ? currentTheme.accent : currentTheme.bg,
-                        color: settings.theme === theme ? 'white' : currentTheme.text
-                      }}
-                    >
+                    <button key={theme} onClick={() => updateSetting('theme', theme)} className={`flex-1 p-2 text-xs rounded-lg transition-all flex items-center justify-center gap-1 ${settings.theme === theme ? 'font-semibold' : ''}`} style={{ backgroundColor: settings.theme === theme ? currentTheme.accent : currentTheme.bg, color: settings.theme === theme ? 'white' : currentTheme.text }}>
                       {theme === 'dark' ? <Moon size={12} /> : <Palette size={12} />}
                       {theme.charAt(0).toUpperCase() + theme.slice(1)}
                     </button>
@@ -628,58 +495,26 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
                 </div>
               </div>
 
-              {/* Column Width */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Column Width</label>
                 <div className="flex gap-1">
                   {(['narrow', 'medium', 'wide'] as const).map((width) => (
-                    <button
-                      key={width}
-                      onClick={() => updateSetting('maxWidth', width)}
-                      className={`flex-1 p-2 text-xs rounded-lg transition-all ${
-                        settings.maxWidth === width ? 'font-semibold' : ''
-                      }`}
-                      style={{
-                        backgroundColor: settings.maxWidth === width ? currentTheme.accent : currentTheme.bg,
-                        color: settings.maxWidth === width ? 'white' : currentTheme.text
-                      }}
-                    >
+                    <button key={width} onClick={() => updateSetting('maxWidth', width)} className={`flex-1 p-2 text-xs rounded-lg transition-all ${settings.maxWidth === width ? 'font-semibold' : ''}`} style={{ backgroundColor: settings.maxWidth === width ? currentTheme.accent : currentTheme.bg, color: settings.maxWidth === width ? 'white' : currentTheme.text }}>
                       {width.charAt(0).toUpperCase() + width.slice(1)}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Reset button */}
-              <button
-                onClick={() => setSettings({
-                  fontSize: 18,
-                  lineHeight: 1.7,
-                  fontFamily: 'serif',
-                  theme: 'dark',
-                  maxWidth: 'medium',
-                  textAlign: 'left'
-                })}
-                className="w-full p-2 text-xs rounded-lg transition-all flex items-center justify-center gap-1"
-                style={{ backgroundColor: currentTheme.bg, color: currentTheme.secondary }}
-              >
+              <button onClick={() => setSettings({ fontSize: 18, lineHeight: 1.7, fontFamily: 'serif', theme: 'dark', maxWidth: 'medium', textAlign: 'left' })} className="w-full p-2 text-xs rounded-lg transition-all flex items-center justify-center gap-1" style={{ backgroundColor: currentTheme.bg, color: currentTheme.secondary }}>
                 <RotateCcw size={12} />
                 Reset to Defaults
               </button>
             </div>
           )}
 
-          {/* Scroll to top button */}
           {showScrollTop && (
-            <button
-              onClick={scrollToTop}
-              className="fixed bottom-8 right-8 p-4 rounded-full shadow-lg transition-all duration-300 animate-fade-in"
-              style={{ 
-                backgroundColor: currentTheme.accent,
-                color: 'white'
-              }}
-              title="Scroll to top"
-            >
+            <button onClick={scrollToTop} className="fixed bottom-8 right-8 p-4 rounded-full shadow-lg transition-all duration-300 animate-fade-in" style={{ backgroundColor: currentTheme.accent, color: 'white' }} title="Scroll to top">
               <ChevronUp size={20} />
             </button>
           )}
@@ -689,31 +524,15 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
           <button onClick={onEdit} className="btn btn-secondary btn-sm">
             <Edit size={14} /> Edit
           </button>
-          <button
-            onClick={() => setIsFullscreen(true)}
-            className="btn btn-secondary btn-sm"
-            title="Enter fullscreen reading mode"
-          >
+          <button onClick={() => setIsFullscreen(true)} className="btn btn-secondary btn-sm" title="Enter fullscreen reading mode">
             <Maximize2 size={14} />
           </button>
         </div>
       )}
 
-      {/* Content */}
       <div ref={contentRef} style={isFullscreen ? { paddingTop: '2rem' } : {}}>
-        <article 
-          className={`prose prose-invert prose-lg max-w-none transition-all duration-300 ${
-            isFullscreen ? 'mx-auto' : ''
-          }`}
-          style={contentStyles}
-        >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{ 
-              code: (props) => <CodeBlock {...props} theme={settings.theme} />
-            }}
-            className="focus:outline-none"
-          >
+        <article className={`prose prose-invert prose-lg max-w-none transition-all duration-300 ${isFullscreen ? 'mx-auto' : ''}`} style={contentStyles}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: (props) => <CodeBlock {...props} theme={settings.theme} /> }} className="focus:outline-none">
             {content}
           </ReactMarkdown>
         </article>
@@ -727,6 +546,7 @@ export function BookView({
   currentBookId,
   onCreateBookRoadmap,
   onGenerateAllModules,
+  onRetryFailedModules,
   onAssembleBook,
   onSelectBook,
   onDeleteBook,
@@ -1001,6 +821,8 @@ export function BookView({
   if (view === 'detail' && currentBook) {
     const areAllModulesDone = currentBook.roadmap && currentBook.modules.length === currentBook.roadmap.modules.length && currentBook.modules.every(m => m.status === 'completed');
     const currentProgress = Math.min(100, Math.max(0, currentBook.progress));
+    const failedModules = currentBook.modules.filter(m => m.status === 'error');
+    const completedModules = currentBook.modules.filter(m => m.status === 'completed');
 
     return (
       <div className="flex-1 flex flex-col h-full">
@@ -1063,16 +885,59 @@ export function BookView({
                       <div><span className="text-gray-400">Modules:</span><p className="font-medium">{currentBook.modules.length} / {currentBook.roadmap?.modules.length || '...'} completed</p></div>
                     </div>
                   </div>
+
+                  {/* NEW: Checkpoint Resume Card */}
                   {currentBook.status === 'roadmap_completed' && !areAllModulesDone && (
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6 text-center">
-                      <h3 className="text-lg font-semibold text-white mb-2">Ready to Write!</h3>
-                      <p className="text-sm text-gray-400 mb-4">Your book's roadmap is complete. Start generating the chapters.</p>
-                      <button onClick={handleStartGeneration} disabled={isGenerating} className="btn btn-primary">
-                        <Play className="w-4 h-4" />
-                        <span>{isGenerating ? 'Generating...' : 'Generate All Modules'}</span>
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 flex items-center justify-center bg-blue-500/10 rounded-lg">
+                          <Play className="w-6 h-6 text-blue-500" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-white">Ready to Generate Content</h3>
+                          <p className="text-sm text-gray-400">
+                            {completedModules.length > 0
+                              ? `Resume from ${completedModules.length} completed modules`
+                              : 'Start generating all modules'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-4">
+                        <div className="flex items-start gap-3">
+                          <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                          <div className="text-sm text-gray-300">
+                            <p className="font-medium text-white mb-2">Smart Recovery Enabled</p>
+                            <ul className="space-y-1 text-xs text-gray-400">
+                              <li>✓ Progress is saved automatically after each module</li>
+                              <li>✓ Failed modules will be retried up to 3 times</li>
+                              <li>✓ You can safely close the page and resume later</li>
+                              <li>✓ Individual module failures won't stop the entire process</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleStartGeneration}
+                        disabled={isGenerating}
+                        className="btn btn-primary w-full"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <Loader2 className="animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4" />
+                            {completedModules.length > 0 ? 'Resume Generation' : 'Generate All Modules'}
+                          </>
+                        )}
                       </button>
                     </div>
                   )}
+
                   {currentBook.status === 'generating_content' && (
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <h3 className="text-lg font-semibold text-white mb-4">Generation Progress</h3>
@@ -1089,6 +954,95 @@ export function BookView({
                       </div>
                     </div>
                   )}
+
+                  {/* NEW: Failed Modules Summary with Retry */}
+                  {currentBook.modules.length > 0 && failedModules.length > 0 && (
+                    <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-6">
+                      <div className="flex items-start gap-4">
+                        <AlertCircle className="w-8 h-8 text-yellow-400 shrink-0 mt-1" />
+                        <div className="flex-1">
+                          <h3 className="text-xl font-bold text-yellow-400 mb-2">
+                            Partial Generation Issue
+                          </h3>
+                          <p className="text-gray-300 mb-4">
+                            {failedModules.length} module(s) failed to generate.
+                            You can retry just the failed modules or continue with what's available.
+                          </p>
+                          
+                          {/* Failed modules list */}
+                          <div className="bg-black/20 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
+                            <h4 className="text-sm font-semibold text-yellow-300 mb-2">Failed Modules:</h4>
+                            <ul className="space-y-2">
+                              {failedModules.map(module => (
+                                <li key={module.id} className="flex items-start gap-2 text-sm">
+                                  <X className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <span className="font-medium text-gray-200">{module.title}</span>
+                                    {module.error && (
+                                      <p className="text-xs text-gray-400 mt-1">{module.error}</p>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          {/* Success count */}
+                          <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-3 mb-4">
+                            <div className="flex items-center gap-2 text-green-400">
+                              <Check className="w-5 h-5" />
+                              <span className="font-medium">
+                                {completedModules.length} modules generated successfully
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <button
+                              onClick={() => onRetryFailedModules(currentBook, {
+                                goal: currentBook.goal,
+                                language: currentBook.language,
+                                targetAudience: formData.targetAudience,
+                                complexityLevel: formData.complexityLevel,
+                                preferences: formData.preferences
+                              })}
+                              disabled={isGenerating}
+                              className="btn bg-yellow-600/20 border border-yellow-500/30 text-yellow-300 hover:bg-yellow-600/30 transition-colors flex-1"
+                            >
+                              {isGenerating ? (
+                                <>
+                                  <Loader2 className="animate-spin" />
+                                  Retrying...
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw size={16} />
+                                  Retry Failed Modules Only
+                                </>
+                              )}
+                            </button>
+                            
+                            {completedModules.length >= (currentBook.roadmap?.modules.length || 0) * 0.6 && (
+                              <button
+                                onClick={handleStartAssembly}
+                                disabled={isGenerating}
+                                className="btn btn-secondary flex-1"
+                              >
+                                <Box className="w-4 h-4" />
+                                Continue with Available Modules
+                              </button>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-gray-500 mt-3">
+                            💡 Tip: If retries keep failing, try switching to a different AI model in the sidebar.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {areAllModulesDone && !['completed', 'assembling', 'error'].includes(currentBook.status) && (
                     <div className="bg-[var(--color-card)] border border-green-500/30 rounded-lg p-6 text-center">
                       <h3 className="text-lg font-semibold text-green-400 mb-2">All Chapters Written!</h3>
@@ -1099,6 +1053,7 @@ export function BookView({
                       </button>
                     </div>
                   )}
+
                   {currentBook.roadmap && (
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <h3 className="text-lg font-semibold text-white mb-4">Learning Roadmap</h3>
@@ -1128,6 +1083,7 @@ export function BookView({
                       </div>
                     </div>
                   )}
+
                   {currentBook.status === 'error' && currentBook.error && (
                     <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6">
                       <div className="flex items-start gap-4">
@@ -1144,6 +1100,7 @@ export function BookView({
                       </div>
                     </div>
                   )}
+
                   {currentBook.status === 'completed' && currentBook.finalBook && (
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <div className="flex items-center justify-between mb-4">
