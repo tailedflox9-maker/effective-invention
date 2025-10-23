@@ -1,4 +1,4 @@
-// src/App.tsx (Mobile-Responsive Enhanced)
+// src/App.tsx (Complete with Recovery Features)
 import React, { useState, useEffect } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Sidebar } from './components/Sidebar';
@@ -41,11 +41,9 @@ function App() {
       
       setIsMobile(mobile);
       
-      // Auto-open sidebar on desktop, auto-close on mobile/tablet
       if (desktop) {
         setSidebarOpen(true);
       } else if (mobile || tablet) {
-        // Close sidebar when switching to mobile/tablet unless user is actively browsing
         if (view === 'list' || view === 'create') {
           setSidebarOpen(false);
         }
@@ -54,8 +52,6 @@ function App() {
 
     handleResize();
     window.addEventListener('resize', handleResize);
-    
-    // Listen for orientation changes on mobile
     window.addEventListener('orientationchange', () => {
       setTimeout(handleResize, 100);
     });
@@ -84,7 +80,6 @@ function App() {
     }
   }, [currentBookId]);
 
-  // Enhanced offline detection with better mobile handling
   useEffect(() => {
     const handleOnline = () => { 
       setIsOnline(true); 
@@ -94,7 +89,6 @@ function App() {
     const handleOffline = () => {
       setIsOnline(false);
       setShowOfflineMessage(true);
-      // Show offline message longer on mobile
       const timeout = isMobile ? 7000 : 5000;
       setTimeout(() => setShowOfflineMessage(false), timeout);
     };
@@ -108,7 +102,6 @@ function App() {
     };
   }, [isMobile]);
 
-  // Prevent scrolling when sidebar is open on mobile
   useEffect(() => {
     if (isMobile && sidebarOpen) {
       document.body.style.overflow = 'hidden';
@@ -121,14 +114,13 @@ function App() {
     };
   }, [isMobile, sidebarOpen]);
 
-  const hasApiKey = !!(settings.googleApiKey || settings.mistralApiKey);
+  const hasApiKey = !!(settings.googleApiKey || settings.mistralApiKey || settings.zhipuApiKey);
   
   const handleSelectBook = (id: string | null) => {
     setCurrentBookId(id);
     if (id) {
       setView('detail');
     }
-    // Always close sidebar on mobile when selecting a book
     if (isMobile) {
       setSidebarOpen(false);
     }
@@ -174,30 +166,87 @@ function App() {
     }
   };
   
+  // ENHANCED: Generate all modules with recovery support
   const handleGenerateAllModules = async (book: BookProject, session: BookSession): Promise<void> => {
     if (!book.roadmap || !isOnline) {
       alert('This feature requires an internet connection.');
       return;
     }
-    handleBookProgressUpdate(book.id, { status: 'generating_content' });
-    const modulesToGenerate = book.roadmap.modules.filter(roadmapModule => 
-      !book.modules.find(m => m.roadmapModuleId === roadmapModule.id && m.status === 'completed')
-    );
-    let completedModules = [...book.modules];
-    for (let i = 0; i < modulesToGenerate.length; i++) {
-      const roadmapModule = modulesToGenerate[i];
-      try {
-        const newModule = await bookService.generateModuleContent({ ...book, modules: completedModules }, roadmapModule, session);
-        completedModules.push(newModule);
-        const currentProgress = 10 + ((i + 1) / book.roadmap.modules.length) * 80;
-        handleBookProgressUpdate(book.id, { modules: [...completedModules], progress: currentProgress });
-      } catch (error) {
-        console.error(`Failed to generate module ${roadmapModule.title}`, error);
-        handleBookProgressUpdate(book.id, { status: 'error', error: `Failed on module: ${roadmapModule.title}.` });
-        return;
+
+    // Check if there's a checkpoint
+    const hasCheckpoint = bookService.hasCheckpoint(book.id);
+    const checkpointInfo = bookService.getCheckpointInfo(book.id);
+
+    if (hasCheckpoint && checkpointInfo) {
+      const message = `Found previous progress:\n\n` +
+        `✓ ${checkpointInfo.completed} module(s) completed\n` +
+        `✗ ${checkpointInfo.failed} module(s) failed\n\n` +
+        `Do you want to:\n` +
+        `• Click OK to RESUME from where you left off\n` +
+        `• Click Cancel to START FRESH (will lose progress)`;
+
+      const shouldResume = window.confirm(message);
+      
+      if (!shouldResume) {
+        // Clear checkpoint and start fresh
+        localStorage.removeItem(`checkpoint_${book.id}`);
+        handleBookProgressUpdate(book.id, { 
+          modules: [],
+          status: 'generating_content',
+          progress: 15
+        });
       }
     }
-    handleBookProgressUpdate(book.id, { status: 'roadmap_completed' });
+
+    handleBookProgressUpdate(book.id, { status: 'generating_content' });
+
+    try {
+      // Use the new recovery-enabled method
+      await bookService.generateAllModulesWithRecovery(book, session);
+    } catch (error) {
+      console.error("Module generation failed:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Generation failed';
+      handleBookProgressUpdate(book.id, { 
+        status: 'error', 
+        error: errorMessage
+      });
+    }
+  };
+
+  // NEW: Retry only failed modules
+  const handleRetryFailedModules = async (book: BookProject, session: BookSession): Promise<void> => {
+    if (!isOnline) {
+      alert('This feature requires an internet connection.');
+      return;
+    }
+
+    const failedCount = book.modules.filter(m => m.status === 'error').length;
+    
+    if (failedCount === 0) {
+      alert('No failed modules to retry.');
+      return;
+    }
+
+    const shouldRetry = window.confirm(
+      `Retry ${failedCount} failed module${failedCount > 1 ? 's' : ''}?\n\n` +
+      `This will attempt to regenerate only the modules that failed.\n` +
+      `Successfully generated modules will be preserved.`
+    );
+
+    if (!shouldRetry) return;
+
+    handleBookProgressUpdate(book.id, { status: 'generating_content' });
+
+    try {
+      await bookService.retryFailedModules(book, session);
+    } catch (error) {
+      console.error("Retry failed:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Retry failed';
+      handleBookProgressUpdate(book.id, { 
+        status: 'error', 
+        error: `Retry failed: ${errorMessage}` 
+      });
+    }
   };
 
   const handleAssembleBook = async (book: BookProject, session: BookSession): Promise<void> => {
@@ -224,6 +273,8 @@ function App() {
         setCurrentBookId(null);
         setShowListInMain(true);
       }
+      // Clean up checkpoint if exists
+      localStorage.removeItem(`checkpoint_${id}`);
     }
   };
   
@@ -259,7 +310,6 @@ function App() {
     setSidebarOpen(true);
   };
 
-  // Close sidebar when clicking outside on mobile
   const handleBackdropClick = () => {
     if (isMobile) {
       setSidebarOpen(false);
@@ -285,7 +335,6 @@ function App() {
         onNewBook={() => {
           setView('create');
           setShowListInMain(false);
-          // Close sidebar on mobile after action
           if (isMobile) {
             setSidebarOpen(false);
           }
@@ -300,7 +349,7 @@ function App() {
       />
 
       <div className="main-content">
-        {/* Enhanced mobile menu button with better positioning */}
+        {/* Enhanced mobile menu button */}
         {!sidebarOpen && (
           <button 
             onClick={handleMenuClick} 
@@ -318,7 +367,7 @@ function App() {
           </button>
         )}
 
-        {/* Enhanced offline message with mobile optimization */}
+        {/* Enhanced offline message */}
         {showOfflineMessage && (
           <div 
             className={`fixed z-50 content-card animate-fade-in-up ${
@@ -344,6 +393,7 @@ function App() {
           currentBookId={currentBookId}
           onCreateBookRoadmap={handleCreateBookRoadmap}
           onGenerateAllModules={handleGenerateAllModules}
+          onRetryFailedModules={handleRetryFailedModules}
           onAssembleBook={handleAssembleBook}
           onSelectBook={handleSelectBook}
           onDeleteBook={handleDeleteBook}
@@ -365,7 +415,6 @@ function App() {
         isMobile={isMobile}
       />
 
-      {/* Enhanced install prompt with mobile optimization */}
       {isInstallable && !isInstalled && (
         <InstallPrompt 
           onInstall={handleInstallApp} 
@@ -374,7 +423,6 @@ function App() {
         />
       )}
 
-      {/* Vercel Analytics Component */}
       <Analytics />
     </div>
   );
