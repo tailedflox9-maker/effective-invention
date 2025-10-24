@@ -1,9 +1,10 @@
-// src/App.tsx (Complete with Recovery Features)
+// src/App.tsx - Enhanced with Real-time Generation UI
 import React, { useState, useEffect } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Sidebar } from './components/Sidebar';
 import { InstallPrompt } from './components/InstallPrompt';
 import { SettingsModal } from './components/SettingsModal';
+import { GenerationProgressPanel, useGenerationStats } from './components/GenerationProgressPanel';
 import { APISettings, ModelProvider } from './types';
 import { usePWA } from './hooks/usePWA';
 import { Menu, WifiOff } from 'lucide-react';
@@ -14,6 +15,20 @@ import { BookProject, BookSession } from './types/book';
 import { generateId } from './utils/helpers';
 
 type AppView = 'list' | 'create' | 'detail';
+
+// Generation status type
+interface GenerationStatus {
+  currentModule?: {
+    id: string;
+    title: string;
+    attempt: number;
+    progress: number;
+    generatedText?: string;
+  };
+  totalProgress: number;
+  status: 'idle' | 'generating' | 'completed' | 'error';
+  message?: string;
+}
 
 function App() {
   const [books, setBooks] = useState<BookProject[]>(() => storageUtils.getBooks());
@@ -30,8 +45,25 @@ function App() {
   const [showOfflineMessage, setShowOfflineMessage] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Real-time generation state
+  const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
+    status: 'idle',
+    totalProgress: 0
+  });
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStartTime, setGenerationStartTime] = useState<Date>(new Date());
+
   const { isInstallable, isInstalled, installApp, dismissInstallPrompt } = usePWA();
-  
+
+  // Calculate generation stats
+  const currentBook = currentBookId ? books.find(b => b.id === currentBookId) : null;
+  const generationStats = useGenerationStats(
+    currentBook?.roadmap?.totalModules || 0,
+    currentBook?.modules.filter(m => m.status === 'completed').length || 0,
+    currentBook?.modules.filter(m => m.status === 'error').length || 0,
+    generationStartTime
+  );
+
   // Enhanced responsive detection
   useEffect(() => {
     const handleResize = () => {
@@ -62,8 +94,24 @@ function App() {
     };
   }, [view]);
 
+  // Setup book service callbacks
   useEffect(() => {
     bookService.updateSettings(settings);
+    
+    // Set progress callback
+    bookService.setProgressCallback(handleBookProgressUpdate);
+    
+    // Set generation status callback
+    bookService.setGenerationStatusCallback((bookId, status) => {
+      setGenerationStatus(status);
+      
+      // Auto-hide when completed
+      if (status.status === 'completed') {
+        setTimeout(() => {
+          setIsGenerating(false);
+        }, 3000);
+      }
+    });
   }, [settings]);
 
   useEffect(() => { 
@@ -153,7 +201,7 @@ function App() {
       category: 'general',
     };
     setBooks(prev => [newBook, ...prev]);
-    bookService.setProgressCallback(handleBookProgressUpdate);
+    
     try {
       await bookService.generateRoadmap(session, newBook.id);
       handleSelectBook(newBook.id); 
@@ -166,14 +214,13 @@ function App() {
     }
   };
   
-  // ENHANCED: Generate all modules with recovery support
   const handleGenerateAllModules = async (book: BookProject, session: BookSession): Promise<void> => {
     if (!book.roadmap || !isOnline) {
       alert('This feature requires an internet connection.');
       return;
     }
 
-    // Check if there's a checkpoint
+    // Check for checkpoint
     const hasCheckpoint = bookService.hasCheckpoint(book.id);
     const checkpointInfo = bookService.getCheckpointInfo(book.id);
 
@@ -188,7 +235,6 @@ function App() {
       const shouldResume = window.confirm(message);
       
       if (!shouldResume) {
-        // Clear checkpoint and start fresh
         localStorage.removeItem(`checkpoint_${book.id}`);
         handleBookProgressUpdate(book.id, { 
           modules: [],
@@ -198,14 +244,36 @@ function App() {
       }
     }
 
+    // Show real-time UI
+    setIsGenerating(true);
+    setGenerationStartTime(new Date());
+    setGenerationStatus({
+      status: 'generating',
+      totalProgress: 0,
+      message: 'Starting generation...'
+    });
+
     handleBookProgressUpdate(book.id, { status: 'generating_content' });
 
     try {
-      // Use the new recovery-enabled method
       await bookService.generateAllModulesWithRecovery(book, session);
+      
+      // Update to completed
+      setGenerationStatus({
+        status: 'completed',
+        totalProgress: 100,
+        message: '✓ Generation complete!'
+      });
     } catch (error) {
       console.error("Module generation failed:", error);
       const errorMessage = error instanceof Error ? error.message : 'Generation failed';
+      
+      setGenerationStatus({
+        status: 'error',
+        totalProgress: 0,
+        message: errorMessage
+      });
+      
       handleBookProgressUpdate(book.id, { 
         status: 'error', 
         error: errorMessage
@@ -213,7 +281,6 @@ function App() {
     }
   };
 
-  // NEW: Retry only failed modules
   const handleRetryFailedModules = async (book: BookProject, session: BookSession): Promise<void> => {
     if (!isOnline) {
       alert('This feature requires an internet connection.');
@@ -235,13 +302,35 @@ function App() {
 
     if (!shouldRetry) return;
 
+    // Show real-time UI
+    setIsGenerating(true);
+    setGenerationStartTime(new Date());
+    setGenerationStatus({
+      status: 'generating',
+      totalProgress: 0,
+      message: 'Retrying failed modules...'
+    });
+
     handleBookProgressUpdate(book.id, { status: 'generating_content' });
 
     try {
       await bookService.retryFailedModules(book, session);
+      
+      setGenerationStatus({
+        status: 'completed',
+        totalProgress: 100,
+        message: '✓ Retry complete!'
+      });
     } catch (error) {
       console.error("Retry failed:", error);
       const errorMessage = error instanceof Error ? error.message : 'Retry failed';
+      
+      setGenerationStatus({
+        status: 'error',
+        totalProgress: 0,
+        message: errorMessage
+      });
+      
       handleBookProgressUpdate(book.id, { 
         status: 'error', 
         error: `Retry failed: ${errorMessage}` 
@@ -273,7 +362,6 @@ function App() {
         setCurrentBookId(null);
         setShowListInMain(true);
       }
-      // Clean up checkpoint if exists
       localStorage.removeItem(`checkpoint_${id}`);
     }
   };
@@ -316,9 +404,18 @@ function App() {
     }
   };
 
+  const handleCancelGeneration = () => {
+    if (window.confirm('Cancel generation? Progress will be saved.')) {
+      if (currentBookId) {
+        bookService.cancelActiveRequests(currentBookId);
+      }
+      setIsGenerating(false);
+      setGenerationStatus({ status: 'idle', totalProgress: 0 });
+    }
+  };
+
   return (
     <div className="app-container viewport-full prevent-overscroll">
-      {/* Mobile/Tablet sidebar backdrop */}
       {sidebarOpen && !window.matchMedia('(min-width: 1024px)').matches && (
         <div 
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
@@ -345,11 +442,9 @@ function App() {
         isSidebarOpen={sidebarOpen}
         settings={settings}
         onModelChange={handleModelChange}
-        isMobile={isMobile}
       />
 
       <div className="main-content">
-        {/* Enhanced mobile menu button */}
         {!sidebarOpen && (
           <button 
             onClick={handleMenuClick} 
@@ -367,7 +462,6 @@ function App() {
           </button>
         )}
 
-        {/* Enhanced offline message */}
         {showOfflineMessage && (
           <div 
             className={`fixed z-50 content-card animate-fade-in-up ${
@@ -407,19 +501,28 @@ function App() {
         />
       </div>
 
+      {/* Real-time Generation Progress Panel */}
+      {isGenerating && currentBookId && (
+        <GenerationProgressPanel
+          bookId={currentBookId}
+          generationStatus={generationStatus}
+          stats={generationStats}
+          onCancel={handleCancelGeneration}
+          isPausable={false}
+        />
+      )}
+
       <SettingsModal 
         isOpen={settingsOpen} 
         onClose={() => setSettingsOpen(false)} 
         settings={settings} 
         onSaveSettings={handleSaveSettings}
-        isMobile={isMobile}
       />
 
       {isInstallable && !isInstalled && (
         <InstallPrompt 
           onInstall={handleInstallApp} 
           onDismiss={dismissInstallPrompt}
-          isMobile={isMobile}
         />
       )}
 
