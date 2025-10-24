@@ -1,4 +1,4 @@
-// src/App.tsx - Enhanced with Real-time Generation UI
+// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Sidebar } from './components/Sidebar';
@@ -16,7 +16,7 @@ import { generateId } from './utils/helpers';
 
 type AppView = 'list' | 'create' | 'detail';
 
-// Generation status type
+// UPDATED Generation status type
 interface GenerationStatus {
   currentModule?: {
     id: string;
@@ -27,7 +27,8 @@ interface GenerationStatus {
   };
   totalProgress: number;
   status: 'idle' | 'generating' | 'completed' | 'error';
-  message?: string;
+  logMessage?: string;
+  totalWordsGenerated?: number;
 }
 
 function App() {
@@ -45,23 +46,26 @@ function App() {
   const [showOfflineMessage, setShowOfflineMessage] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Real-time generation state
+  // Real-time generation state - UPDATED
   const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
     status: 'idle',
-    totalProgress: 0
+    totalProgress: 0,
+    totalWordsGenerated: 0,
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStartTime, setGenerationStartTime] = useState<Date>(new Date());
 
   const { isInstallable, isInstalled, installApp, dismissInstallPrompt } = usePWA();
 
-  // Calculate generation stats
+  // Calculate generation stats - UPDATED
   const currentBook = currentBookId ? books.find(b => b.id === currentBookId) : null;
+  const totalWordsGenerated = currentBook?.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0) || 0;
   const generationStats = useGenerationStats(
     currentBook?.roadmap?.totalModules || 0,
     currentBook?.modules.filter(m => m.status === 'completed').length || 0,
     currentBook?.modules.filter(m => m.status === 'error').length || 0,
-    generationStartTime
+    generationStartTime,
+    generationStatus.totalWordsGenerated || totalWordsGenerated
   );
 
   // Enhanced responsive detection
@@ -94,22 +98,23 @@ function App() {
     };
   }, [view]);
 
-  // Setup book service callbacks
+  // Setup book service callbacks - UPDATED
   useEffect(() => {
     bookService.updateSettings(settings);
     
-    // Set progress callback
     bookService.setProgressCallback(handleBookProgressUpdate);
     
-    // Set generation status callback
     bookService.setGenerationStatusCallback((bookId, status) => {
-      setGenerationStatus(status);
+      setGenerationStatus(prevStatus => ({
+        ...prevStatus,
+        ...status,
+        totalWordsGenerated: status.totalWordsGenerated || prevStatus.totalWordsGenerated,
+      }));
       
-      // Auto-hide when completed
-      if (status.status === 'completed') {
+      if (status.status === 'completed' || status.status === 'error') {
         setTimeout(() => {
           setIsGenerating(false);
-        }, 3000);
+        }, 5000);
       }
     });
   }, [settings]);
@@ -244,13 +249,15 @@ function App() {
       }
     }
 
-    // Show real-time UI
+    // Show real-time UI - UPDATED
+    const initialWords = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
     setIsGenerating(true);
     setGenerationStartTime(new Date());
     setGenerationStatus({
       status: 'generating',
       totalProgress: 0,
-      message: 'Starting generation...'
+      totalWordsGenerated: initialWords,
+      logMessage: 'Initializing generation engine...'
     });
 
     handleBookProgressUpdate(book.id, { status: 'generating_content' });
@@ -259,20 +266,21 @@ function App() {
       await bookService.generateAllModulesWithRecovery(book, session);
       
       // Update to completed
-      setGenerationStatus({
+      setGenerationStatus(prev => ({
+        ...prev,
         status: 'completed',
         totalProgress: 100,
-        message: '✓ Generation complete!'
-      });
+        logMessage: '✓ Generation complete!'
+      }));
     } catch (error) {
       console.error("Module generation failed:", error);
       const errorMessage = error instanceof Error ? error.message : 'Generation failed';
       
-      setGenerationStatus({
+      setGenerationStatus(prev => ({
+        ...prev,
         status: 'error',
-        totalProgress: 0,
-        message: errorMessage
-      });
+        logMessage: errorMessage
+      }));
       
       handleBookProgressUpdate(book.id, { 
         status: 'error', 
@@ -303,12 +311,14 @@ function App() {
     if (!shouldRetry) return;
 
     // Show real-time UI
+    const initialWords = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
     setIsGenerating(true);
     setGenerationStartTime(new Date());
     setGenerationStatus({
       status: 'generating',
       totalProgress: 0,
-      message: 'Retrying failed modules...'
+      totalWordsGenerated: initialWords,
+      logMessage: 'Retrying failed modules...'
     });
 
     handleBookProgressUpdate(book.id, { status: 'generating_content' });
@@ -316,20 +326,21 @@ function App() {
     try {
       await bookService.retryFailedModules(book, session);
       
-      setGenerationStatus({
+      setGenerationStatus(prev => ({
+        ...prev,
         status: 'completed',
         totalProgress: 100,
-        message: '✓ Retry complete!'
-      });
+        logMessage: '✓ Retry complete!'
+      }));
     } catch (error) {
       console.error("Retry failed:", error);
       const errorMessage = error instanceof Error ? error.message : 'Retry failed';
       
-      setGenerationStatus({
+      setGenerationStatus(prev => ({
+        ...prev,
         status: 'error',
-        totalProgress: 0,
-        message: errorMessage
-      });
+        logMessage: errorMessage
+      }));
       
       handleBookProgressUpdate(book.id, { 
         status: 'error', 
@@ -410,7 +421,7 @@ function App() {
         bookService.cancelActiveRequests(currentBookId);
       }
       setIsGenerating(false);
-      setGenerationStatus({ status: 'idle', totalProgress: 0 });
+      setGenerationStatus({ status: 'idle', totalProgress: 0, totalWordsGenerated: 0 });
     }
   };
 
@@ -504,11 +515,9 @@ function App() {
       {/* Real-time Generation Progress Panel */}
       {isGenerating && currentBookId && (
         <GenerationProgressPanel
-          bookId={currentBookId}
           generationStatus={generationStatus}
           stats={generationStats}
           onCancel={handleCancelGeneration}
-          isPausable={false}
         />
       )}
 
