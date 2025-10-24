@@ -1,4 +1,4 @@
-// src/services/bookService.ts - COMPLETE WORKING VERSION
+// src/services/bookService.ts
 import { BookProject, BookRoadmap, BookModule, RoadmapModule, BookSession } from '../types/book';
 import { APISettings, ModelProvider } from '../types';
 import { generateId } from '../utils/helpers';
@@ -16,7 +16,7 @@ interface GenerationCheckpoint {
   timestamp: Date;
 }
 
-// Real-time generation status
+// Real-time generation status - UPDATED
 export interface GenerationStatus {
   currentModule?: {
     id: string;
@@ -27,7 +27,8 @@ export interface GenerationStatus {
   };
   totalProgress: number;
   status: 'idle' | 'generating' | 'completed' | 'error';
-  message?: string;
+  logMessage?: string; // ADDED
+  totalWordsGenerated?: number; // ADDED
 }
 
 class BookGenerationService {
@@ -536,6 +537,8 @@ Return ONLY valid JSON:
       attempt: attemptNumber
     });
 
+    const totalWordsBefore = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
+
     this.updateGenerationStatus(book.id, {
       currentModule: {
         id: roadmapModule.id,
@@ -545,7 +548,7 @@ Return ONLY valid JSON:
       },
       totalProgress: 0,
       status: 'generating',
-      message: `Generating: ${roadmapModule.title} (Attempt ${attemptNumber}/${this.MAX_MODULE_RETRIES})`
+      logMessage: `Starting: ${roadmapModule.title} (Attempt ${attemptNumber}/${this.MAX_MODULE_RETRIES})`
     });
 
     try {
@@ -556,22 +559,19 @@ Return ONLY valid JSON:
 
       const prompt = this.buildModulePrompt(session, roadmapModule, previousModules, isFirstModule, moduleIndex, totalModules);
       
-      let generatedText = '';
-      const moduleContent = await this.generateWithAI(prompt, book.id, (chunk) => {
-        generatedText += chunk;
-        const progress = Math.min(95, (generatedText.length / 3000) * 100);
-        
-        this.updateGenerationStatus(book.id, {
-          currentModule: {
-            id: roadmapModule.id,
-            title: roadmapModule.title,
-            attempt: attemptNumber,
-            progress,
-            generatedText: generatedText
-          },
-          totalProgress: 0,
-          status: 'generating'
-        });
+      const moduleContent = await this.generateWithAI(prompt, book.id);
+      
+      // Send full text for typewriter effect
+      this.updateGenerationStatus(book.id, {
+        currentModule: {
+          id: roadmapModule.id,
+          title: roadmapModule.title,
+          attempt: attemptNumber,
+          progress: 100, // We have the full text now
+          generatedText: moduleContent
+        },
+        totalProgress: 0,
+        status: 'generating'
       });
 
       const wordCount = moduleContent.split(/\s+/).filter(word => word.length > 0).length;
@@ -599,7 +599,8 @@ Return ONLY valid JSON:
         },
         totalProgress: 0,
         status: 'generating',
-        message: `✓ Completed: ${roadmapModule.title}`
+        logMessage: `✓ Completed: ${roadmapModule.title} (${wordCount} words)`,
+        totalWordsGenerated: totalWordsBefore + wordCount,
       });
 
       logger.info('Module generation successful', {
@@ -630,7 +631,7 @@ Return ONLY valid JSON:
           },
           totalProgress: 0,
           status: 'generating',
-          message: `⚠️ Retry in ${Math.round(delay / 1000)}s: ${roadmapModule.title} (Attempt ${attemptNumber + 1}/${this.MAX_MODULE_RETRIES})`
+          logMessage: `⚠️ Retry in ${Math.round(delay / 1000)}s: ${roadmapModule.title}`
         });
         
         await sleep(delay);
@@ -640,6 +641,11 @@ Return ONLY valid JSON:
       logger.error('Module generation failed after all retries', {
         moduleTitle: roadmapModule.title,
         error: errorMessage
+      });
+
+      this.updateGenerationStatus(book.id, {
+          status: 'error',
+          logMessage: `✗ Failed: ${roadmapModule.title} after all retries.`
       });
 
       return {
