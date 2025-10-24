@@ -567,7 +567,7 @@ Return ONLY valid JSON:
             title: roadmapModule.title,
             attempt: attemptNumber,
             progress,
-            generatedText: generatedText.substring(0, 500) + '...'
+            generatedText: generatedText
           },
           totalProgress: 0,
           status: 'generating'
