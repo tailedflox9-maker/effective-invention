@@ -44,35 +44,15 @@ export function GenerationProgressPanel({
   onCancel,
   isPausable = false
 }: GenerationProgressPanelProps) {
-  const [displayedText, setDisplayedText] = useState('');
   const [isExpanded, setIsExpanded] = useState(true);
   const textContainerRef = useRef<HTMLDivElement>(null);
-
-  // Animate text appearance
-  useEffect(() => {
-    if (generationStatus.currentModule?.generatedText) {
-      const targetText = generationStatus.currentModule.generatedText;
-      let currentIndex = 0;
-      
-      const interval = setInterval(() => {
-        if (currentIndex < targetText.length) {
-          setDisplayedText(targetText.substring(0, currentIndex + 1));
-          currentIndex++;
-        } else {
-          clearInterval(interval);
-        }
-      }, 10); // Fast typing effect
-
-      return () => clearInterval(interval);
-    }
-  }, [generationStatus.currentModule?.generatedText]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     if (textContainerRef.current) {
       textContainerRef.current.scrollTop = textContainerRef.current.scrollHeight;
     }
-  }, [displayedText]);
+  }, [generationStatus.currentModule?.generatedText]);
 
   const formatTime = (seconds: number): string => {
     if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -214,7 +194,7 @@ export function GenerationProgressPanel({
               </div>
 
               {/* Live Generated Text Preview */}
-              {displayedText && (
+              {generationStatus.currentModule?.generatedText && (
                 <div 
                   ref={textContainerRef}
                   className="bg-black/40 rounded-lg p-3 max-h-[200px] overflow-y-auto border border-white/5"
@@ -224,7 +204,7 @@ export function GenerationProgressPanel({
                     <span className="text-xs text-gray-400 font-medium">Live Preview</span>
                   </div>
                   <p className="text-xs text-gray-300 leading-relaxed font-mono">
-                    {displayedText}
+                    {generationStatus.currentModule.generatedText}
                     <span className="inline-block w-1 h-3 bg-blue-400 animate-pulse ml-1"></span>
                   </p>
                 </div>
