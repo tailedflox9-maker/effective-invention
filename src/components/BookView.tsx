@@ -65,6 +65,16 @@ interface BookViewProps {
   generationStats?: GenerationStats;
 }
 
+// Reusable animated background for cards
+const AnimatedCardBackground = ({ color = 'rgba(59, 130, 246, 0.1)' }: { color?: string }) => (
+  <div className="absolute inset-0 opacity-5 pointer-events-none">
+    <div className="absolute inset-0" style={{
+      backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 10px, ${color} 10px, ${color} 20px)`
+    }}></div>
+  </div>
+);
+
+
 // Embedded Progress Panel Component
 const EmbeddedProgressPanel = ({ 
   generationStatus, 
@@ -1009,7 +1019,6 @@ export function BookView({
 
   if (view === 'detail' && currentBook) {
     const areAllModulesDone = currentBook.roadmap && currentBook.modules.length === currentBook.roadmap.modules.length && currentBook.modules.every(m => m.status === 'completed');
-    const currentProgress = Math.min(100, Math.max(0, currentBook.progress));
     const failedModules = currentBook.modules.filter(m => m.status === 'error');
     const completedModules = currentBook.modules.filter(m => m.status === 'completed');
 
@@ -1065,7 +1074,8 @@ export function BookView({
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
+                  <div className="bg-gray-900/50 backdrop-blur-sm border border-white/10 rounded-xl p-6 relative overflow-hidden">
+                    <AnimatedCardBackground />
                     <h3 className="text-lg font-semibold text-white mb-4">Book Details</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                       <div><span className="text-gray-400">Goal:</span><p className="font-medium">{currentBook.goal}</p></div>
@@ -1091,7 +1101,8 @@ export function BookView({
 
                   {/* START GENERATION CARD */}
                   {currentBook.status === 'roadmap_completed' && !areAllModulesDone && currentBook.status !== 'generating_content' && (
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
+                    <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl border border-blue-500/30 p-6 relative overflow-hidden shadow-lg shadow-blue-500/10">
+                      <AnimatedCardBackground />
                       <div className="flex items-center gap-3 mb-4">
                         <div className="w-12 h-12 flex items-center justify-center bg-blue-500/10 rounded-lg">
                           <Play className="w-6 h-6 text-blue-500" />
@@ -1106,7 +1117,7 @@ export function BookView({
                         </div>
                       </div>
                       
-                      <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-4">
+                      <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
                           <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                           <div className="text-sm text-gray-300">
@@ -1143,7 +1154,8 @@ export function BookView({
 
                   {/* FAILED MODULES CARD */}
                   {currentBook.modules.length > 0 && failedModules.length > 0 && (
-                    <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-6">
+                    <div className="bg-yellow-900/30 backdrop-blur-sm border border-yellow-500/40 rounded-xl p-6 relative overflow-hidden">
+                       <AnimatedCardBackground color='rgba(234, 179, 8, 0.1)' />
                       <div className="flex items-start gap-4">
                         <AlertCircle className="w-8 h-8 text-yellow-400 shrink-0 mt-1" />
                         <div className="flex-1">
@@ -1155,7 +1167,7 @@ export function BookView({
                             You can retry just the failed modules or continue with what's available.
                           </p>
                           
-                          <div className="bg-black/20 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
+                          <div className="bg-yellow-950/30 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
                             <h4 className="text-sm font-semibold text-yellow-300 mb-2">Failed Modules:</h4>
                             <ul className="space-y-2">
                               {failedModules.map(module => (
@@ -1172,7 +1184,7 @@ export function BookView({
                             </ul>
                           </div>
 
-                          <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-3 mb-4">
+                          <div className="bg-green-950/30 border border-green-500/20 rounded-lg p-3 mb-4">
                             <div className="flex items-center gap-2 text-green-400">
                               <Check className="w-5 h-5" />
                               <span className="font-medium">
@@ -1228,7 +1240,8 @@ export function BookView({
 
                   {/* ASSEMBLY CARD */}
                   {areAllModulesDone && !['completed', 'assembling', 'error'].includes(currentBook.status) && (
-                    <div className="bg-[var(--color-card)] border border-green-500/30 rounded-lg p-6 text-center">
+                    <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl border border-green-500/30 p-6 text-center relative overflow-hidden shadow-lg shadow-green-500/10">
+                      <AnimatedCardBackground color='rgba(34, 197, 94, 0.1)' />
                       <h3 className="text-lg font-semibold text-green-400 mb-2">All Chapters Written!</h3>
                       <p className="text-sm text-gray-400 mb-4">All modules have been successfully generated. Now, assemble the final book.</p>
                       <button onClick={handleStartAssembly} disabled={isGenerating} className="btn btn-secondary">
@@ -1240,7 +1253,8 @@ export function BookView({
 
                   {/* ROADMAP SECTION */}
                   {currentBook.roadmap && (
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
+                    <div className="bg-gray-900/50 backdrop-blur-sm border border-white/10 rounded-xl p-6 relative overflow-hidden">
+                      <AnimatedCardBackground />
                       <div className="flex items-center gap-3 mb-6">
                         <ListChecks className="w-5 h-5 text-purple-400" />
                         <h3 className="text-xl font-bold">Learning Roadmap</h3>
@@ -1254,14 +1268,14 @@ export function BookView({
                           return (
                             <div 
                               key={module.id}
-                              className={`flex items-start gap-3 p-4 rounded-lg border transition-all ${
+                              className={`flex items-start gap-3 p-4 rounded-xl border transition-all ${
                                 isActive 
-                                  ? 'border-blue-500/50 bg-blue-500/5 shadow-lg shadow-blue-500/10'
+                                  ? 'border-blue-500/50 bg-blue-900/30 shadow-lg shadow-blue-500/10'
                                   : completedModule?.status === 'completed'
-                                  ? 'border-green-500/30 bg-green-500/5'
+                                  ? 'border-green-500/30 bg-green-900/20'
                                   : completedModule?.status === 'error'
-                                  ? 'border-red-500/30 bg-red-500/5'
-                                  : 'border-[#2A2A2A] hover:border-gray-600'
+                                  ? 'border-red-500/30 bg-red-900/20'
+                                  : 'border-white/10 bg-black/20 hover:border-gray-500 hover:bg-black/30'
                               }`}
                             >
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-all ${
@@ -1321,7 +1335,8 @@ export function BookView({
 
                   {/* ERROR CARD */}
                   {currentBook.status === 'error' && currentBook.error && (
-                    <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6">
+                    <div className="bg-red-900/30 backdrop-blur-sm border border-red-500/40 rounded-xl p-6 relative overflow-hidden">
+                      <AnimatedCardBackground color='rgba(239, 68, 68, 0.1)' />
                       <div className="flex items-start gap-4">
                         <AlertCircle className="w-8 h-8 text-red-400 shrink-0" />
                         <div>
@@ -1339,11 +1354,12 @@ export function BookView({
 
                   {/* PREVIEW CARD */}
                   {currentBook.status === 'completed' && currentBook.finalBook && (
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
+                    <div className="bg-gray-900/50 backdrop-blur-sm border border-white/10 rounded-xl p-6 relative overflow-hidden">
+                      <AnimatedCardBackground />
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-white">Book Preview</h3>
                       </div>
-                      <div className="bg-[var(--color-bg)] rounded-lg p-4 max-h-96 overflow-y-auto text-sm border border-[var(--color-border)]">
+                      <div className="bg-black/30 rounded-xl p-4 max-h-96 overflow-y-auto text-sm border border-white/10">
                         <pre className="whitespace-pre-wrap font-mono text-gray-300">
                           {currentBook.finalBook.substring(0, 2000)}...
                         </pre>
