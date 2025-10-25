@@ -65,16 +65,6 @@ interface BookViewProps {
   generationStats?: GenerationStats;
 }
 
-// Reusable animated background for cards
-const AnimatedCardBackground = ({ color = 'rgba(59, 130, 246, 0.1)' }: { color?: string }) => (
-  <div className="absolute inset-0 opacity-5 pointer-events-none">
-    <div className="absolute inset-0" style={{
-      backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 10px, ${color} 10px, ${color} 20px)`
-    }}></div>
-  </div>
-);
-
-
 // Embedded Progress Panel Component
 const EmbeddedProgressPanel = ({ 
   generationStatus, 
@@ -96,19 +86,12 @@ const EmbeddedProgressPanel = ({
   const overallProgress = (stats.completedModules / (stats.totalModules || 1)) * 100;
 
   return (
-    <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-xl border-2 border-blue-500/30 p-6 space-y-6 relative overflow-hidden animate-fade-in-up">
-      {/* Animated Background Pattern */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(59, 130, 246, 0.1) 10px, rgba(59, 130, 246, 0.1) 20px)`
-        }}></div>
-      </div>
-
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6 space-y-6 animate-fade-in-up">
       {/* Header */}
-      <div className="relative z-10">
+      <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
               <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
             </div>
             <div>
@@ -134,7 +117,7 @@ const EmbeddedProgressPanel = ({
             <span>Overall Progress</span>
             <span className="font-mono font-bold text-white">{Math.round(overallProgress)}%</span>
           </div>
-          <div className="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden border border-gray-600/50">
+          <div className="w-full bg-gray-800/50 rounded-full h-3 overflow-hidden border border-gray-700">
             <div 
               className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative"
               style={{ width: `${overallProgress}%` }}
@@ -147,7 +130,7 @@ const EmbeddedProgressPanel = ({
 
       {/* Current Module */}
       {generationStatus.currentModule && (
-        <div className="relative z-10 bg-black/40 rounded-lg p-4 border border-blue-500/20">
+        <div className="bg-black/20 rounded-lg p-4 border border-[var(--color-border)]">
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-semibold text-white flex items-center gap-2">
               <Activity className="w-4 h-4 text-blue-400" />
@@ -162,7 +145,7 @@ const EmbeddedProgressPanel = ({
           </div>
           
           {generationStatus.currentModule.generatedText && (
-            <div className="bg-gray-900/60 rounded-lg p-3 max-h-32 overflow-y-auto border border-gray-700/50 text-xs text-gray-300 leading-relaxed font-mono">
+            <div className="bg-[var(--color-bg)] rounded-lg p-3 max-h-32 overflow-y-auto border border-[var(--color-border)] text-xs text-gray-300 leading-relaxed font-mono">
               <Zap className="w-3 h-3 text-yellow-400 inline-block mr-2" />
               {generationStatus.currentModule.generatedText}
               <span className="inline-block w-1.5 h-3 bg-blue-400 animate-pulse ml-1"></span>
@@ -172,8 +155,8 @@ const EmbeddedProgressPanel = ({
       )}
 
       {/* Statistics Grid */}
-      <div className="relative z-10 grid grid-cols-3 gap-3">
-        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <Check className="w-4 h-4 text-green-400" />
             <span className="text-xs text-gray-400">Completed</span>
@@ -181,7 +164,7 @@ const EmbeddedProgressPanel = ({
           <div className="text-xl font-bold text-white font-mono">{stats.completedModules}</div>
         </div>
         
-        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <X className="w-4 h-4 text-red-400" />
             <span className="text-xs text-gray-400">Failed</span>
@@ -189,7 +172,7 @@ const EmbeddedProgressPanel = ({
           <div className="text-xl font-bold text-white font-mono">{stats.failedModules}</div>
         </div>
         
-        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <FileText className="w-4 h-4 text-blue-400" />
             <span className="text-xs text-gray-400">Words</span>
@@ -197,7 +180,7 @@ const EmbeddedProgressPanel = ({
           <div className="text-xl font-bold text-white font-mono">{stats.totalWordsGenerated.toLocaleString()}</div>
         </div>
         
-        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <Gauge className="w-4 h-4 text-purple-400" />
             <span className="text-xs text-gray-400">WPM</span>
@@ -205,7 +188,7 @@ const EmbeddedProgressPanel = ({
           <div className="text-xl font-bold text-white font-mono">{stats.wordsPerMinute.toFixed(0)}</div>
         </div>
         
-        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <Clock className="w-4 h-4 text-orange-400" />
             <span className="text-xs text-gray-400">Avg Time</span>
@@ -213,7 +196,7 @@ const EmbeddedProgressPanel = ({
           <div className="text-lg font-bold text-white font-mono">{formatTime(stats.averageTimePerModule)}</div>
         </div>
         
-        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-cyan-400" />
             <span className="text-xs text-gray-400">Est. Time</span>
@@ -224,7 +207,7 @@ const EmbeddedProgressPanel = ({
 
       {/* Status Message */}
       {generationStatus.logMessage && (
-        <div className="relative z-10 text-center">
+        <div className="text-center">
           <p className="text-sm text-gray-400 font-mono">
             {generationStatus.logMessage}
           </p>
@@ -1074,8 +1057,7 @@ export function BookView({
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-gray-900/50 backdrop-blur-sm border border-white/10 rounded-xl p-6 relative overflow-hidden">
-                    <AnimatedCardBackground />
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                     <h3 className="text-lg font-semibold text-white mb-4">Book Details</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                       <div><span className="text-gray-400">Goal:</span><p className="font-medium">{currentBook.goal}</p></div>
@@ -1101,8 +1083,7 @@ export function BookView({
 
                   {/* START GENERATION CARD */}
                   {currentBook.status === 'roadmap_completed' && !areAllModulesDone && currentBook.status !== 'generating_content' && (
-                    <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl border border-blue-500/30 p-6 relative overflow-hidden shadow-lg shadow-blue-500/10">
-                      <AnimatedCardBackground />
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <div className="flex items-center gap-3 mb-4">
                         <div className="w-12 h-12 flex items-center justify-center bg-blue-500/10 rounded-lg">
                           <Play className="w-6 h-6 text-blue-500" />
@@ -1117,7 +1098,7 @@ export function BookView({
                         </div>
                       </div>
                       
-                      <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
+                      <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
                           <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                           <div className="text-sm text-gray-300">
@@ -1154,8 +1135,7 @@ export function BookView({
 
                   {/* FAILED MODULES CARD */}
                   {currentBook.modules.length > 0 && failedModules.length > 0 && (
-                    <div className="bg-yellow-900/30 backdrop-blur-sm border border-yellow-500/40 rounded-xl p-6 relative overflow-hidden">
-                       <AnimatedCardBackground color='rgba(234, 179, 8, 0.1)' />
+                    <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-6">
                       <div className="flex items-start gap-4">
                         <AlertCircle className="w-8 h-8 text-yellow-400 shrink-0 mt-1" />
                         <div className="flex-1">
@@ -1167,7 +1147,7 @@ export function BookView({
                             You can retry just the failed modules or continue with what's available.
                           </p>
                           
-                          <div className="bg-yellow-950/30 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
+                          <div className="bg-black/20 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
                             <h4 className="text-sm font-semibold text-yellow-300 mb-2">Failed Modules:</h4>
                             <ul className="space-y-2">
                               {failedModules.map(module => (
@@ -1184,7 +1164,7 @@ export function BookView({
                             </ul>
                           </div>
 
-                          <div className="bg-green-950/30 border border-green-500/20 rounded-lg p-3 mb-4">
+                          <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-3 mb-4">
                             <div className="flex items-center gap-2 text-green-400">
                               <Check className="w-5 h-5" />
                               <span className="font-medium">
@@ -1240,8 +1220,7 @@ export function BookView({
 
                   {/* ASSEMBLY CARD */}
                   {areAllModulesDone && !['completed', 'assembling', 'error'].includes(currentBook.status) && (
-                    <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl border border-green-500/30 p-6 text-center relative overflow-hidden shadow-lg shadow-green-500/10">
-                      <AnimatedCardBackground color='rgba(34, 197, 94, 0.1)' />
+                    <div className="bg-[var(--color-card)] border border-green-500/30 rounded-lg p-6 text-center">
                       <h3 className="text-lg font-semibold text-green-400 mb-2">All Chapters Written!</h3>
                       <p className="text-sm text-gray-400 mb-4">All modules have been successfully generated. Now, assemble the final book.</p>
                       <button onClick={handleStartAssembly} disabled={isGenerating} className="btn btn-secondary">
@@ -1253,8 +1232,7 @@ export function BookView({
 
                   {/* ROADMAP SECTION */}
                   {currentBook.roadmap && (
-                    <div className="bg-gray-900/50 backdrop-blur-sm border border-white/10 rounded-xl p-6 relative overflow-hidden">
-                      <AnimatedCardBackground />
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <div className="flex items-center gap-3 mb-6">
                         <ListChecks className="w-5 h-5 text-purple-400" />
                         <h3 className="text-xl font-bold">Learning Roadmap</h3>
@@ -1268,14 +1246,14 @@ export function BookView({
                           return (
                             <div 
                               key={module.id}
-                              className={`flex items-start gap-3 p-4 rounded-xl border transition-all ${
+                              className={`flex items-start gap-3 p-4 rounded-lg border transition-all ${
                                 isActive 
-                                  ? 'border-blue-500/50 bg-blue-900/30 shadow-lg shadow-blue-500/10'
+                                  ? 'border-blue-500/50 bg-blue-500/5 shadow-lg'
                                   : completedModule?.status === 'completed'
-                                  ? 'border-green-500/30 bg-green-900/20'
+                                  ? 'border-green-500/30 bg-green-500/5'
                                   : completedModule?.status === 'error'
-                                  ? 'border-red-500/30 bg-red-900/20'
-                                  : 'border-white/10 bg-black/20 hover:border-gray-500 hover:bg-black/30'
+                                  ? 'border-red-500/30 bg-red-500/5'
+                                  : 'border-[var(--color-border)] hover:border-gray-600'
                               }`}
                             >
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-all ${
@@ -1285,7 +1263,7 @@ export function BookView({
                                   ? 'bg-red-500 text-white'
                                   : isActive
                                   ? 'bg-blue-500 text-white animate-pulse'
-                                  : 'bg-[#2A2A2A] text-gray-400'
+                                  : 'bg-[var(--color-border)] text-gray-400'
                               }`}>
                                 {completedModule?.status === 'completed' ? (
                                   <Check size={16} />
@@ -1335,8 +1313,7 @@ export function BookView({
 
                   {/* ERROR CARD */}
                   {currentBook.status === 'error' && currentBook.error && (
-                    <div className="bg-red-900/30 backdrop-blur-sm border border-red-500/40 rounded-xl p-6 relative overflow-hidden">
-                      <AnimatedCardBackground color='rgba(239, 68, 68, 0.1)' />
+                    <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6">
                       <div className="flex items-start gap-4">
                         <AlertCircle className="w-8 h-8 text-red-400 shrink-0" />
                         <div>
@@ -1354,12 +1331,11 @@ export function BookView({
 
                   {/* PREVIEW CARD */}
                   {currentBook.status === 'completed' && currentBook.finalBook && (
-                    <div className="bg-gray-900/50 backdrop-blur-sm border border-white/10 rounded-xl p-6 relative overflow-hidden">
-                      <AnimatedCardBackground />
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-white">Book Preview</h3>
                       </div>
-                      <div className="bg-black/30 rounded-xl p-4 max-h-96 overflow-y-auto text-sm border border-white/10">
+                      <div className="bg-[var(--color-bg)] rounded-lg p-4 max-h-96 overflow-y-auto text-sm border border-[var(--color-border)]">
                         <pre className="whitespace-pre-wrap font-mono text-gray-300">
                           {currentBook.finalBook.substring(0, 2000)}...
                         </pre>
