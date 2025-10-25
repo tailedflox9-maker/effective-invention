@@ -1,4 +1,4 @@
-// src/components/BookView.tsx (Complete Updated Version)
+// src/components/BookView.tsx (Complete Updated Version with Log Fixes)
 import React, { useEffect, ReactNode, useMemo, useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,12 +10,14 @@ import {
   BarChart3, ListChecks, Play, Box, ArrowLeft, Check, BookText, RefreshCw, Edit, Save, X,
   FileText, Maximize2, Minimize2,
   List, Settings, Moon, ZoomIn, ZoomOut, BookOpen, 
-  ChevronUp, RotateCcw, Palette, Hash, Activity, TrendingUp, Zap, Gauge
+  ChevronUp, RotateCcw, Palette, Hash, Activity, TrendingUp, Zap, Gauge,
+  Terminal, Eye, EyeOff // NEW: Imported icons
 } from 'lucide-react';
 import { BookProject, BookSession } from '../types/book';
 import { bookService } from '../services/bookService';
 import { BookAnalytics } from './BookAnalytics';
 import { CustomSelect } from './CustomSelect';
+import { logger } from '../utils/logger'; // NEW: Import logger
 
 type AppView = 'list' | 'create' | 'detail';
 
@@ -75,6 +77,37 @@ const EmbeddedProgressPanel = ({
   stats: GenerationStats;
   onCancel?: () => void;
 }) => {
+  // NEW: Log state and effect
+  const [eventLog, setEventLog] = useState(() => logger.getLogs());
+  const [showEventLog, setShowEventLog] = useState(false);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const unsubscribe = logger.subscribe(setEventLog);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (showEventLog && logContainerRef.current) {
+        logContainerRef.current.scrollTop = 0;
+    }
+  }, [eventLog, showEventLog]);
+
+  // NEW: Log download handler
+  const handleDownloadLogs = () => {
+    const logsContent = logger.exportLogs();
+    const blob = new Blob([logsContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pustakam-generation-log-${new Date().toISOString().replace(/:/g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+
   const formatTime = (seconds: number): string => {
     if (isNaN(seconds) || seconds < 1) return '--';
     if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -205,14 +238,59 @@ const EmbeddedProgressPanel = ({
         </div>
       </div>
 
-      {/* Status Message */}
-      {generationStatus.logMessage && (
-        <div className="text-center">
-          <p className="text-sm text-gray-400 font-mono">
-            {generationStatus.logMessage}
-          </p>
+      {/* NEW: JSX for System Log section */}
+      <div className="bg-black/20 p-3 rounded-lg border border-[var(--color-border)]">
+        <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-semibold text-gray-400 flex items-center gap-2">
+                <Terminal className="w-3.5 h-3.5" />
+                SYSTEM LOG
+            </h4>
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={() => setShowEventLog(!showEventLog)}
+                    className="p-1 hover:bg-white/10 rounded transition-colors"
+                    title={showEventLog ? 'Collapse log' : 'Expand log'}
+                >
+                    {showEventLog ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                </button>
+                <button
+                    onClick={handleDownloadLogs}
+                    className="p-1 hover:bg-white/10 rounded transition-colors"
+                    title="Download full log"
+                >
+                    <Download className="w-3 h-3 text-blue-400" />
+                </button>
+            </div>
         </div>
-      )}
+        
+        {showEventLog && (
+            <div ref={logContainerRef} className="max-h-[180px] overflow-y-auto space-y-2 text-xs font-mono bg-[var(--color-bg)] p-2 rounded-md border border-[var(--color-border)]">
+                {eventLog.length === 0 ? (
+                    <div className="text-gray-500 text-center py-4">No logs yet...</div>
+                ) : (
+                    eventLog.map(log => (
+                        <div key={log.id} className="flex gap-2 items-start">
+                            <span className="text-gray-500 shrink-0">{log.timestamp}</span>
+                            <span className={`${
+                                log.type === 'success' ? 'text-green-400' : 
+                                log.type === 'warn' ? 'text-yellow-400' :
+                                log.type === 'error' ? 'text-red-400' :
+                                'text-gray-300'
+                            }`}>
+                                {log.message}
+                            </span>
+                        </div>
+                    ))
+                )}
+            </div>
+        )}
+        
+        {!showEventLog && generationStatus.logMessage && (
+            <div className="text-xs text-gray-400 font-mono truncate">
+                {generationStatus.logMessage}
+            </div>
+        )}
+      </div>
     </div>
   );
 };
