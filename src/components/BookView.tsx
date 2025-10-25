@@ -1,4 +1,4 @@
-// src/components/BookView.tsx (Complete with Recovery UI)
+// src/components/BookView.tsx (Complete Updated Version)
 import React, { useEffect, ReactNode, useMemo, useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,7 +10,7 @@ import {
   BarChart3, ListChecks, Play, Box, ArrowLeft, Check, BookText, RefreshCw, Edit, Save, X,
   FileText, Maximize2, Minimize2,
   List, Settings, Moon, ZoomIn, ZoomOut, BookOpen, 
-  ChevronUp, RotateCcw, Palette
+  ChevronUp, RotateCcw, Palette, Hash, Activity, TrendingUp, Zap, Gauge
 } from 'lucide-react';
 import { BookProject, BookSession } from '../types/book';
 import { bookService } from '../services/bookService';
@@ -18,6 +18,32 @@ import { BookAnalytics } from './BookAnalytics';
 import { CustomSelect } from './CustomSelect';
 
 type AppView = 'list' | 'create' | 'detail';
+
+// Generation Status Interface
+interface GenerationStatus {
+  currentModule?: {
+    id: string;
+    title: string;
+    attempt: number;
+    progress: number;
+    generatedText?: string;
+  };
+  totalProgress: number;
+  status: 'idle' | 'generating' | 'completed' | 'error';
+  logMessage?: string;
+  totalWordsGenerated?: number;
+}
+
+interface GenerationStats {
+  startTime: Date;
+  totalModules: number;
+  completedModules: number;
+  failedModules: number;
+  averageTimePerModule: number;
+  estimatedTimeRemaining: number;
+  totalWordsGenerated: number;
+  wordsPerMinute: number;
+}
 
 interface BookViewProps {
   books: BookProject[];
@@ -35,7 +61,168 @@ interface BookViewProps {
   showListInMain: boolean;
   setShowListInMain: React.Dispatch<React.SetStateAction<boolean>>;
   isMobile?: boolean;
+  generationStatus?: GenerationStatus;
+  generationStats?: GenerationStats;
 }
+
+// Embedded Progress Panel Component
+const EmbeddedProgressPanel = ({ 
+  generationStatus, 
+  stats, 
+  onCancel 
+}: { 
+  generationStatus: GenerationStatus;
+  stats: GenerationStats;
+  onCancel?: () => void;
+}) => {
+  const formatTime = (seconds: number): string => {
+    if (isNaN(seconds) || seconds < 1) return '--';
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}m ${secs}s`;
+  };
+
+  const overallProgress = (stats.completedModules / (stats.totalModules || 1)) * 100;
+
+  return (
+    <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-xl border-2 border-blue-500/30 p-6 space-y-6 relative overflow-hidden animate-fade-in-up">
+      {/* Animated Background Pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(59, 130, 246, 0.1) 10px, rgba(59, 130, 246, 0.1) 20px)`
+        }}></div>
+      </div>
+
+      {/* Header */}
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+              <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-lg">Generation In Progress</h3>
+              <p className="text-sm text-gray-400">
+                Module {stats.completedModules + 1} of {stats.totalModules}
+              </p>
+            </div>
+          </div>
+          {onCancel && (
+            <button 
+              onClick={onCancel}
+              className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+
+        {/* Overall Progress Bar */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+            <span>Overall Progress</span>
+            <span className="font-mono font-bold text-white">{Math.round(overallProgress)}%</span>
+          </div>
+          <div className="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden border border-gray-600/50">
+            <div 
+              className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative"
+              style={{ width: `${overallProgress}%` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Current Module */}
+      {generationStatus.currentModule && (
+        <div className="relative z-10 bg-black/40 rounded-lg p-4 border border-blue-500/20">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold text-white flex items-center gap-2">
+              <Activity className="w-4 h-4 text-blue-400" />
+              {generationStatus.currentModule.title}
+            </h4>
+            {generationStatus.currentModule.attempt > 1 && (
+              <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-md border border-yellow-500/20">
+                <RefreshCw className="w-3 h-3" />
+                <span>Attempt {generationStatus.currentModule.attempt}</span>
+              </div>
+            )}
+          </div>
+          
+          {generationStatus.currentModule.generatedText && (
+            <div className="bg-gray-900/60 rounded-lg p-3 max-h-32 overflow-y-auto border border-gray-700/50 text-xs text-gray-300 leading-relaxed font-mono">
+              <Zap className="w-3 h-3 text-yellow-400 inline-block mr-2" />
+              {generationStatus.currentModule.generatedText}
+              <span className="inline-block w-1.5 h-3 bg-blue-400 animate-pulse ml-1"></span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Statistics Grid */}
+      <div className="relative z-10 grid grid-cols-3 gap-3">
+        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+          <div className="flex items-center gap-2 mb-1">
+            <Check className="w-4 h-4 text-green-400" />
+            <span className="text-xs text-gray-400">Completed</span>
+          </div>
+          <div className="text-xl font-bold text-white font-mono">{stats.completedModules}</div>
+        </div>
+        
+        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+          <div className="flex items-center gap-2 mb-1">
+            <X className="w-4 h-4 text-red-400" />
+            <span className="text-xs text-gray-400">Failed</span>
+          </div>
+          <div className="text-xl font-bold text-white font-mono">{stats.failedModules}</div>
+        </div>
+        
+        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+          <div className="flex items-center gap-2 mb-1">
+            <FileText className="w-4 h-4 text-blue-400" />
+            <span className="text-xs text-gray-400">Words</span>
+          </div>
+          <div className="text-xl font-bold text-white font-mono">{stats.totalWordsGenerated.toLocaleString()}</div>
+        </div>
+        
+        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+          <div className="flex items-center gap-2 mb-1">
+            <Gauge className="w-4 h-4 text-purple-400" />
+            <span className="text-xs text-gray-400">WPM</span>
+          </div>
+          <div className="text-xl font-bold text-white font-mono">{stats.wordsPerMinute.toFixed(0)}</div>
+        </div>
+        
+        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="w-4 h-4 text-orange-400" />
+            <span className="text-xs text-gray-400">Avg Time</span>
+          </div>
+          <div className="text-lg font-bold text-white font-mono">{formatTime(stats.averageTimePerModule)}</div>
+        </div>
+        
+        <div className="bg-black/40 rounded-lg p-3 border border-gray-700/50">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs text-gray-400">Est. Time</span>
+          </div>
+          <div className="text-lg font-bold text-white font-mono">{formatTime(stats.estimatedTimeRemaining)}</div>
+        </div>
+      </div>
+
+      {/* Status Message */}
+      {generationStatus.logMessage && (
+        <div className="relative z-10 text-center">
+          <p className="text-sm text-gray-400 font-mono">
+            {generationStatus.logMessage}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const CodeBlock = React.memo(({ children, language, theme }: any) => (
   <SyntaxHighlighter
@@ -557,6 +744,8 @@ export function BookView({
   showListInMain,
   setShowListInMain,
   isMobile = false,
+  generationStatus,
+  generationStats,
 }: BookViewProps) {
   const [detailTab, setDetailTab] = useState<'overview' | 'analytics' | 'read'>('overview');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -886,8 +1075,22 @@ export function BookView({
                     </div>
                   </div>
 
-                  {/* NEW: Checkpoint Resume Card */}
-                  {currentBook.status === 'roadmap_completed' && !areAllModulesDone && (
+                  {/* EMBEDDED PROGRESS PANEL */}
+                  {currentBook.status === 'generating_content' && generationStatus && generationStats && (
+                    <EmbeddedProgressPanel
+                      generationStatus={generationStatus}
+                      stats={generationStats}
+                      onCancel={() => {
+                        if (window.confirm('Cancel generation? Progress will be saved.')) {
+                          bookService.cancelActiveRequests(currentBook.id);
+                          setIsGenerating(false);
+                        }
+                      }}
+                    />
+                  )}
+
+                  {/* START GENERATION CARD */}
+                  {currentBook.status === 'roadmap_completed' && !areAllModulesDone && currentBook.status !== 'generating_content' && (
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <div className="flex items-center gap-3 mb-4">
                         <div className="w-12 h-12 flex items-center justify-center bg-blue-500/10 rounded-lg">
@@ -938,24 +1141,7 @@ export function BookView({
                     </div>
                   )}
 
-                  {currentBook.status === 'generating_content' && (
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-white mb-4">Generation Progress</h3>
-                      <div className="flex items-center gap-4">
-                        <div className="w-full bg-gray-800/50 rounded-full h-3 overflow-hidden border border-gray-700">
-                          <div
-                            className="bg-gradient-to-r from-green-500 via-green-400 to-emerald-400 h-full rounded-full transition-all duration-500 ease-out relative"
-                            style={{ width: `${currentProgress}%` }}
-                          >
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
-                          </div>
-                        </div>
-                        <span className="font-semibold text-sm min-w-[3rem]">{Math.round(currentProgress)}%</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* NEW: Failed Modules Summary with Retry */}
+                  {/* FAILED MODULES CARD */}
                   {currentBook.modules.length > 0 && failedModules.length > 0 && (
                     <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-6">
                       <div className="flex items-start gap-4">
@@ -969,7 +1155,6 @@ export function BookView({
                             You can retry just the failed modules or continue with what's available.
                           </p>
                           
-                          {/* Failed modules list */}
                           <div className="bg-black/20 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
                             <h4 className="text-sm font-semibold text-yellow-300 mb-2">Failed Modules:</h4>
                             <ul className="space-y-2">
@@ -987,7 +1172,6 @@ export function BookView({
                             </ul>
                           </div>
 
-                          {/* Success count */}
                           <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-3 mb-4">
                             <div className="flex items-center gap-2 text-green-400">
                               <Check className="w-5 h-5" />
@@ -997,7 +1181,6 @@ export function BookView({
                             </div>
                           </div>
 
-                          {/* Action buttons */}
                           <div className="flex flex-col sm:flex-row gap-3">
                             <button
                               onClick={() => onRetryFailedModules(currentBook, {
@@ -1043,6 +1226,7 @@ export function BookView({
                     </div>
                   )}
 
+                  {/* ASSEMBLY CARD */}
                   {areAllModulesDone && !['completed', 'assembling', 'error'].includes(currentBook.status) && (
                     <div className="bg-[var(--color-card)] border border-green-500/30 rounded-lg p-6 text-center">
                       <h3 className="text-lg font-semibold text-green-400 mb-2">All Chapters Written!</h3>
@@ -1054,29 +1238,80 @@ export function BookView({
                     </div>
                   )}
 
+                  {/* ROADMAP SECTION */}
                   {currentBook.roadmap && (
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-white mb-4">Learning Roadmap</h3>
+                      <div className="flex items-center gap-3 mb-6">
+                        <ListChecks className="w-5 h-5 text-purple-400" />
+                        <h3 className="text-xl font-bold">Learning Roadmap</h3>
+                      </div>
+
                       <div className="space-y-4">
                         {currentBook.roadmap.modules.map((module, index) => {
                           const completedModule = currentBook.modules.find(m => m.roadmapModuleId === module.id);
+                          const isActive = generationStatus?.currentModule?.id === module.id;
+                          
                           return (
-                            <div key={module.id} className="flex items-start gap-3 p-3 border border-[var(--color-border)] rounded-lg transition-all hover:border-gray-600">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all ${
-                                completedModule ? 'bg-green-500 text-white' : 'bg-[var(--color-border)] text-gray-400'
+                            <div 
+                              key={module.id}
+                              className={`flex items-start gap-3 p-4 rounded-lg border transition-all ${
+                                isActive 
+                                  ? 'border-blue-500/50 bg-blue-500/5 shadow-lg shadow-blue-500/10'
+                                  : completedModule?.status === 'completed'
+                                  ? 'border-green-500/30 bg-green-500/5'
+                                  : completedModule?.status === 'error'
+                                  ? 'border-red-500/30 bg-red-500/5'
+                                  : 'border-[#2A2A2A] hover:border-gray-600'
+                              }`}
+                            >
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-all ${
+                                completedModule?.status === 'completed'
+                                  ? 'bg-green-500 text-white'
+                                  : completedModule?.status === 'error'
+                                  ? 'bg-red-500 text-white'
+                                  : isActive
+                                  ? 'bg-blue-500 text-white animate-pulse'
+                                  : 'bg-[#2A2A2A] text-gray-400'
                               }`}>
-                                {completedModule ? <Check size={14} /> : index + 1}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-semibold">{module.title}</h4>
-                                <p className="text-sm text-gray-400 mt-1">{module.objectives.join(', ')}</p>
-                                {module.estimatedTime && (
-                                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    {module.estimatedTime}
-                                  </p>
+                                {completedModule?.status === 'completed' ? (
+                                  <Check size={16} />
+                                ) : completedModule?.status === 'error' ? (
+                                  <X size={16} />
+                                ) : isActive ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  index + 1
                                 )}
                               </div>
+
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-semibold text-white mb-1">{module.title}</h4>
+                                <p className="text-sm text-gray-400 mb-2">
+                                  {module.objectives.join(' • ')}
+                                </p>
+                                <div className="flex items-center gap-3 text-xs text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {module.estimatedTime}
+                                  </span>
+                                  {completedModule && completedModule.status === 'completed' && (
+                                    <span className="text-green-400 font-medium">
+                                      {completedModule.wordCount} words
+                                    </span>
+                                  )}
+                                  {completedModule && completedModule.status === 'error' && (
+                                    <span className="text-red-400 font-medium">
+                                      Failed
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isActive && (
+                                <div className="text-blue-400 text-xs font-medium bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
+                                  Generating...
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1084,6 +1319,7 @@ export function BookView({
                     </div>
                   )}
 
+                  {/* ERROR CARD */}
                   {currentBook.status === 'error' && currentBook.error && (
                     <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6">
                       <div className="flex items-start gap-4">
@@ -1101,6 +1337,7 @@ export function BookView({
                     </div>
                   )}
 
+                  {/* PREVIEW CARD */}
                   {currentBook.status === 'completed' && currentBook.finalBook && (
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-6">
                       <div className="flex items-center justify-between mb-4">
