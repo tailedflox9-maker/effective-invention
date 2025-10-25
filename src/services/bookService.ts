@@ -1,4 +1,4 @@
-// src/services/bookService.ts
+// src/services/bookService.ts - FIXED STREAMING VERSION
 import { BookProject, BookRoadmap, BookModule, RoadmapModule, BookSession } from '../types/book';
 import { APISettings, ModelProvider } from '../types';
 import { generateId } from '../utils/helpers';
@@ -274,7 +274,7 @@ class BookGenerationService {
     }
   }
 
-  // GOOGLE AI GENERATION
+  // GOOGLE AI GENERATION - FIXED STREAMING
   private async generateWithGoogle(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
@@ -347,13 +347,14 @@ class BookGenerationService {
           wordCount: text.split(/\s+/).length
         }, 'GoogleAI');
         
+        // SMOOTH STREAMING - smaller chunks, faster updates
         if (onChunk) {
           const words = text.split(' ');
-          const chunkSize = Math.max(5, Math.floor(words.length / 20));
+          const chunkSize = Math.max(3, Math.floor(words.length / 50)); // 50 chunks = smoother
           for (let i = 0; i < words.length; i += chunkSize) {
             const chunk = words.slice(i, i + chunkSize).join(' ') + ' ';
             onChunk(chunk);
-            await sleep(50);
+            await sleep(30); // 30ms delay = smooth feel
           }
         }
         
@@ -376,7 +377,7 @@ class BookGenerationService {
     throw new Error('Google API failed after retries');
   }
 
-  // MISTRAL AI GENERATION
+  // MISTRAL AI GENERATION - FIXED STREAMING
   private async generateWithMistral(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
@@ -448,13 +449,14 @@ class BookGenerationService {
           wordCount: text.split(/\s+/).length
         }, 'MistralAI');
         
+        // SMOOTH STREAMING
         if (onChunk) {
           const words = text.split(' ');
-          const chunkSize = Math.max(5, Math.floor(words.length / 20));
+          const chunkSize = Math.max(3, Math.floor(words.length / 50));
           for (let i = 0; i < words.length; i += chunkSize) {
             const chunk = words.slice(i, i + chunkSize).join(' ') + ' ';
             onChunk(chunk);
-            await sleep(50);
+            await sleep(30);
           }
         }
         
@@ -477,7 +479,7 @@ class BookGenerationService {
     throw new Error('Mistral API failed after retries');
   }
 
-  // ZHIPU AI GENERATION
+  // ZHIPU AI GENERATION - FIXED STREAMING
   private async generateWithZhipu(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
@@ -550,12 +552,13 @@ class BookGenerationService {
           wordCount: text.split(/\s+/).length
         }, 'ZhipuAI');
         
+        // SMOOTH STREAMING
         if (onChunk) {
           const words = text.split(' ');
-          const chunkSize = Math.max(5, Math.floor(words.length / 20));
+          const chunkSize = Math.max(3, Math.floor(words.length / 50));
           for (let i = 0; i < words.length; i += chunkSize) {
             onChunk(words.slice(i, i + chunkSize).join(' ') + ' ');
-            await sleep(50);
+            await sleep(30);
           }
         }
         
@@ -699,7 +702,7 @@ Return ONLY valid JSON:
     return roadmap;
   }
 
-  // MODULE GENERATION WITH RETRY
+  // MODULE GENERATION WITH RETRY - FIXED STREAMING
   async generateModuleContentWithRetry(
     book: BookProject,
     roadmapModule: RoadmapModule,
@@ -715,13 +718,16 @@ Return ONLY valid JSON:
 
     const totalWordsBefore = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
 
+    // Clear previous text FIRST, before showing the status
+    this.currentGeneratedTexts.set(book.id, '');
+
     this.updateGenerationStatus(book.id, {
       currentModule: {
         id: roadmapModule.id,
         title: roadmapModule.title,
         attempt: attemptNumber,
         progress: 0,
-        generatedText: '' // THE FIX: Explicitly clear the text box
+        generatedText: '' // Start with empty text
       },
       totalProgress: 0,
       status: 'generating',
@@ -744,20 +750,21 @@ Return ONLY valid JSON:
 
       const generationStartTime = Date.now();
       
-      // Clear previous text for this book
-      this.currentGeneratedTexts.set(book.id, '');
-      
       const moduleContent = await this.generateWithAI(prompt, book.id, (chunk) => {
-        // Accumulate chunks for live feed
-        const currentText = this.getCurrentGeneratedText(book.id) + chunk;
+        // Accumulate chunks for smooth streaming
+        const currentText = (this.currentGeneratedTexts.get(book.id) || '') + chunk;
         this.currentGeneratedTexts.set(book.id, currentText);
+        
+        // Calculate progress based on estimated content length
+        const estimatedLength = 3000;
+        const progress = Math.min(95, (currentText.length / estimatedLength) * 100);
         
         this.updateGenerationStatus(book.id, {
           currentModule: {
             id: roadmapModule.id,
             title: roadmapModule.title,
             attempt: attemptNumber,
-            progress: Math.min(95, (currentText.length / 3000) * 100),
+            progress,
             generatedText: currentText
           },
           totalProgress: 0,
