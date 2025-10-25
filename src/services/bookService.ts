@@ -286,6 +286,7 @@ class BookGenerationService {
       provider: 'Google Gemini',
       model,
       promptLength: prompt.length,
+      prompt: prompt,
       attempt: 1
     }, 'GoogleAI');
 
@@ -387,6 +388,7 @@ class BookGenerationService {
       provider: 'Mistral AI',
       model,
       promptLength: prompt.length,
+      prompt: prompt,
       attempt: 1
     }, 'MistralAI');
 
@@ -487,6 +489,7 @@ class BookGenerationService {
       provider: 'ZhipuAI',
       model,
       promptLength: prompt.length,
+      prompt: prompt,
       attempt: 1
     }, 'ZhipuAI');
 
