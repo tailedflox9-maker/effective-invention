@@ -1,10 +1,10 @@
-// src/App.tsx
+// src/App.tsx (Updated - Remove GenerationProgressPanel popup)
 import React, { useState, useEffect } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Sidebar } from './components/Sidebar';
 import { InstallPrompt } from './components/InstallPrompt';
 import { SettingsModal } from './components/SettingsModal';
-import { GenerationProgressPanel, useGenerationStats } from './components/GenerationProgressPanel';
+import { useGenerationStats } from './components/GenerationProgressPanel';
 import { APISettings, ModelProvider } from './types';
 import { usePWA } from './hooks/usePWA';
 import { Menu, WifiOff } from 'lucide-react';
@@ -16,7 +16,6 @@ import { generateId } from './utils/helpers';
 
 type AppView = 'list' | 'create' | 'detail';
 
-// UPDATED Generation status type
 interface GenerationStatus {
   currentModule?: {
     id: string;
@@ -46,7 +45,6 @@ function App() {
   const [showOfflineMessage, setShowOfflineMessage] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Real-time generation state - UPDATED
   const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
     status: 'idle',
     totalProgress: 0,
@@ -57,7 +55,6 @@ function App() {
 
   const { isInstallable, isInstalled, installApp, dismissInstallPrompt } = usePWA();
 
-  // Calculate generation stats - UPDATED
   const currentBook = currentBookId ? books.find(b => b.id === currentBookId) : null;
   const totalWordsGenerated = currentBook?.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0) || 0;
   const generationStats = useGenerationStats(
@@ -68,7 +65,6 @@ function App() {
     generationStatus.totalWordsGenerated || totalWordsGenerated
   );
 
-  // Enhanced responsive detection
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
@@ -98,7 +94,6 @@ function App() {
     };
   }, [view]);
 
-  // Setup book service callbacks - UPDATED
   useEffect(() => {
     bookService.updateSettings(settings);
     
@@ -225,7 +220,6 @@ function App() {
       return;
     }
 
-    // Check for checkpoint
     const hasCheckpoint = bookService.hasCheckpoint(book.id);
     const checkpointInfo = bookService.getCheckpointInfo(book.id);
 
@@ -249,7 +243,6 @@ function App() {
       }
     }
 
-    // Show real-time UI - UPDATED
     const initialWords = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
     setIsGenerating(true);
     setGenerationStartTime(new Date());
@@ -265,7 +258,6 @@ function App() {
     try {
       await bookService.generateAllModulesWithRecovery(book, session);
       
-      // Update to completed
       setGenerationStatus(prev => ({
         ...prev,
         status: 'completed',
@@ -310,7 +302,6 @@ function App() {
 
     if (!shouldRetry) return;
 
-    // Show real-time UI
     const initialWords = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
     setIsGenerating(true);
     setGenerationStartTime(new Date());
@@ -415,16 +406,6 @@ function App() {
     }
   };
 
-  const handleCancelGeneration = () => {
-    if (window.confirm('Cancel generation? Progress will be saved.')) {
-      if (currentBookId) {
-        bookService.cancelActiveRequests(currentBookId);
-      }
-      setIsGenerating(false);
-      setGenerationStatus({ status: 'idle', totalProgress: 0, totalWordsGenerated: 0 });
-    }
-  };
-
   return (
     <div className="app-container viewport-full prevent-overscroll">
       {sidebarOpen && !window.matchMedia('(min-width: 1024px)').matches && (
@@ -509,17 +490,10 @@ function App() {
           showListInMain={showListInMain}
           setShowListInMain={setShowListInMain}
           isMobile={isMobile}
+          generationStatus={generationStatus}
+          generationStats={generationStats}
         />
       </div>
-
-      {/* Real-time Generation Progress Panel */}
-      {isGenerating && currentBookId && (
-        <GenerationProgressPanel
-          generationStatus={generationStatus}
-          stats={generationStats}
-          onCancel={handleCancelGeneration}
-        />
-      )}
 
       <SettingsModal 
         isOpen={settingsOpen} 
