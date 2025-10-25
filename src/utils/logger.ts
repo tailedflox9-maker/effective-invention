@@ -8,6 +8,7 @@ interface LogEntry {
   apiDetails?: {
     provider?: string;
     model?: string;
+    prompt?: string; // Added prompt field
     promptLength?: number;
     responseLength?: number;
     duration?: number;
@@ -117,6 +118,14 @@ class ConsoleLogger {
         entry += `\n    Prompt Length: ${log.apiDetails.promptLength || 0} chars`;
         entry += `\n    Response Length: ${log.apiDetails.responseLength || 0} chars`;
         entry += `\n    Duration: ${log.apiDetails.duration || 0}ms`;
+
+        // =======================================================
+        //  THIS BLOCK INCLUDES THE FULL PROMPT IN THE LOG FILE
+        // =======================================================
+        if (log.apiDetails.prompt) {
+          entry += `\n\n  --- PROMPT SENT TO AI ---\n${log.apiDetails.prompt}\n  --- END OF PROMPT ---\n`;
+        }
+        // =======================================================
       }
       
       if (log.data) {
@@ -124,7 +133,7 @@ class ConsoleLogger {
       }
       
       return entry;
-    }).reverse().join('\n\n');
+    }).reverse().join('\n\n' + '-'.repeat(100) + '\n\n'); // Added separator for readability
 
     return header + '\n' + logEntries;
   }
