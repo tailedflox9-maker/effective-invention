@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     Loader2, Check, X, AlertTriangle, Zap, Clock,
-    Activity, TrendingUp, RefreshCw, XCircle, FileText, Brain, Gauge
+    Activity, TrendingUp, RefreshCw, XCircle, FileText, Brain, Gauge, Download, Terminal, Eye, EyeOff
 } from 'lucide-react';
 
 // Interfaces for props and state
@@ -42,6 +42,7 @@ interface LogEntry {
     timestamp: string;
     message: string;
     type: 'info' | 'success' | 'warn' | 'error';
+    data?: any;
 }
 
 // Sub-component for displaying individual stats
@@ -62,7 +63,40 @@ export function GenerationProgressPanel({ generationStatus, stats, onCancel }: G
     const [isExpanded, setIsExpanded] = useState(true);
     const [eventLog, setEventLog] = useState<LogEntry[]>([]);
     const [typedText, setTypedText] = useState('');
+    const [showLiveFeed, setShowLiveFeed] = useState(true);
+    const [showEventLog, setShowEventLog] = useState(false);
     const logContainerRef = useRef<HTMLDivElement>(null);
+    const liveFeedRef = useRef<HTMLDivElement>(null);
+
+    // Download logs function
+    const downloadLogs = () => {
+        const logsContent = [
+            '='.repeat(80),
+            'PUSTAKAM AI BOOK GENERATION - DETAILED LOG',
+            '='.repeat(80),
+            `Generated: ${new Date().toLocaleString()}`,
+            `Session Start: ${stats.startTime.toLocaleString()}`,
+            `Total Modules: ${stats.totalModules}`,
+            `Completed: ${stats.completedModules} | Failed: ${stats.failedModules}`,
+            `Total Words Generated: ${stats.totalWordsGenerated.toLocaleString()}`,
+            `Average Speed: ${stats.wordsPerMinute.toFixed(0)} words/minute`,
+            '='.repeat(80),
+            '',
+            ...eventLog.map(log => 
+                `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}${log.data ? `\n   Data: ${JSON.stringify(log.data, null, 2)}` : ''}`
+            ).reverse()
+        ].join('\n');
+
+        const blob = new Blob([logsContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pustakam-generation-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
 
     // Effect for the typewriter animation
     useEffect(() => {
@@ -70,7 +104,7 @@ export function GenerationProgressPanel({ generationStatus, stats, onCancel }: G
         if (fullText === typedText) return;
 
         let i = typedText.length;
-        if (i > fullText.length) { // Reset if new text is shorter
+        if (i > fullText.length) {
              i = 0;
              setTypedText('');
         }
@@ -79,13 +113,18 @@ export function GenerationProgressPanel({ generationStatus, stats, onCancel }: G
             if (i < fullText.length) {
                 setTypedText(prev => prev + fullText[i]);
                 i++;
+                
+                // Auto-scroll live feed
+                if (liveFeedRef.current && showLiveFeed) {
+                    liveFeedRef.current.scrollTop = liveFeedRef.current.scrollHeight;
+                }
             } else {
                 clearInterval(timer);
             }
-        }, 10); // Adjust typing speed here
+        }, 10);
 
         return () => clearInterval(timer);
-    }, [generationStatus.currentModule?.generatedText]);
+    }, [generationStatus.currentModule?.generatedText, showLiveFeed]);
 
     // Reset typed text for new module
     useEffect(() => {
@@ -99,9 +138,17 @@ export function GenerationProgressPanel({ generationStatus, stats, onCancel }: G
                 id: Date.now(),
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 message: generationStatus.logMessage,
-                type: generationStatus.logMessage.includes('✓') ? 'success' : generationStatus.logMessage.includes('⚠️') ? 'warn' : 'info'
+                type: generationStatus.logMessage.includes('✓') ? 'success' : 
+                      generationStatus.logMessage.includes('⚠️') ? 'warn' : 
+                      generationStatus.logMessage.includes('✗') ? 'error' : 'info',
+                data: generationStatus.currentModule ? {
+                    moduleId: generationStatus.currentModule.id,
+                    moduleTitle: generationStatus.currentModule.title,
+                    attempt: generationStatus.currentModule.attempt,
+                    totalWords: generationStatus.totalWordsGenerated
+                } : undefined
             };
-            setEventLog(prev => [newEntry, ...prev.slice(0, 49)]); // Keep last 50 logs
+            setEventLog(prev => [newEntry, ...prev.slice(0, 99)]); // Keep last 100 logs
         }
     }, [generationStatus.logMessage]);
 
@@ -124,10 +171,7 @@ export function GenerationProgressPanel({ generationStatus, stats, onCancel }: G
     const overallProgress = (stats.completedModules / (stats.totalModules || 1)) * 100;
 
     return (
-        <div className={`fixed bottom-6 right-6 w-[550px] max-w-[calc(100vw-3rem)] rounded-2xl border-2 shadow-2xl backdrop-blur-xl bg-black/50 transition-all duration-300 ${color} overflow-hidden`}>
-            {/* Animated Background */}
-            <div className="absolute inset-0 z-0 opacity-20 generation-bg"></div>
-
+        <div className={`fixed bottom-6 right-6 w-[550px] max-w-[calc(100vw-3rem)] rounded-2xl border-2 shadow-2xl backdrop-blur-xl bg-black/50 transition-all duration-300 ${color} overflow-hidden z-50`}>
             <div className="relative z-10">
                 {/* Header */}
                 <div className="p-4 border-b border-white/10">
@@ -171,18 +215,38 @@ export function GenerationProgressPanel({ generationStatus, stats, onCancel }: G
                             <div className="bg-black/30 p-4 rounded-lg border border-white/5 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h4 className="font-medium text-sm text-white truncate pr-4">{generationStatus.currentModule.title}</h4>
-                                    {generationStatus.currentModule.attempt > 1 && (
-                                        <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-md">
-                                            <RefreshCw className="w-3 h-3" />
-                                            <span>Attempt {generationStatus.currentModule.attempt}</span>
+                                    <div className="flex items-center gap-2">
+                                        {generationStatus.currentModule.attempt > 1 && (
+                                            <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-md">
+                                                <RefreshCw className="w-3 h-3" />
+                                                <span>Attempt {generationStatus.currentModule.attempt}</span>
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={() => setShowLiveFeed(!showLiveFeed)}
+                                            className="p-1.5 hover:bg-white/10 rounded-md transition-colors"
+                                            title={showLiveFeed ? 'Hide live feed' : 'Show live feed'}
+                                        >
+                                            {showLiveFeed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {showLiveFeed && typedText && (
+                                    <div 
+                                        ref={liveFeedRef}
+                                        className="bg-black/40 rounded-lg p-3 max-h-[200px] overflow-y-auto border border-white/5 text-xs text-gray-300 leading-relaxed font-mono"
+                                    >
+                                        <div className="flex items-start gap-2 mb-2 pb-2 border-b border-white/10">
+                                            <Zap className="w-3 h-3 text-yellow-400 shrink-0 mt-0.5" />
+                                            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Live AI Stream</span>
                                         </div>
-                                    )}
-                                </div>
-                                <div className="bg-black/40 rounded-lg p-3 max-h-[150px] overflow-y-auto border border-white/5 text-xs text-gray-300 leading-relaxed font-mono">
-                                    <Zap className="w-3 h-3 text-yellow-400 inline-block mr-2" />
-                                    {typedText}
-                                    <span className="inline-block w-1.5 h-3 bg-blue-400 animate-pulse ml-1"></span>
-                                </div>
+                                        <div className="whitespace-pre-wrap">
+                                            {typedText}
+                                            <span className="inline-block w-1.5 h-3 bg-blue-400 animate-pulse ml-1"></span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -198,17 +262,56 @@ export function GenerationProgressPanel({ generationStatus, stats, onCancel }: G
 
                         {/* Event Log */}
                         <div className="bg-black/30 p-3 rounded-lg border border-white/5">
-                            <h4 className="text-xs font-semibold text-gray-400 mb-2">EVENT LOG</h4>
-                            <div ref={logContainerRef} className="max-h-[120px] overflow-y-auto space-y-2 text-xs font-mono">
-                                {eventLog.map(log => (
-                                    <div key={log.id} className="flex gap-2">
-                                        <span className="text-gray-500">{log.timestamp}</span>
-                                        <span className={`${log.type === 'success' ? 'text-green-400' : log.type === 'warn' ? 'text-yellow-400' : 'text-gray-300'}`}>
-                                            {log.message}
-                                        </span>
-                                    </div>
-                                ))}
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-xs font-semibold text-gray-400 flex items-center gap-2">
+                                    <Terminal className="w-3.5 h-3.5" />
+                                    SYSTEM LOG
+                                </h4>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setShowEventLog(!showEventLog)}
+                                        className="p-1 hover:bg-white/10 rounded transition-colors"
+                                        title={showEventLog ? 'Collapse log' : 'Expand log'}
+                                    >
+                                        {showEventLog ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                    </button>
+                                    <button
+                                        onClick={downloadLogs}
+                                        className="p-1 hover:bg-white/10 rounded transition-colors"
+                                        title="Download full log"
+                                    >
+                                        <Download className="w-3 h-3 text-blue-400" />
+                                    </button>
+                                </div>
                             </div>
+                            
+                            {showEventLog && (
+                                <div ref={logContainerRef} className="max-h-[180px] overflow-y-auto space-y-2 text-xs font-mono">
+                                    {eventLog.length === 0 ? (
+                                        <div className="text-gray-500 text-center py-4">No logs yet...</div>
+                                    ) : (
+                                        eventLog.map(log => (
+                                            <div key={log.id} className="flex gap-2 items-start">
+                                                <span className="text-gray-500 shrink-0">{log.timestamp}</span>
+                                                <span className={`${
+                                                    log.type === 'success' ? 'text-green-400' : 
+                                                    log.type === 'warn' ? 'text-yellow-400' :
+                                                    log.type === 'error' ? 'text-red-400' :
+                                                    'text-gray-300'
+                                                }`}>
+                                                    {log.message}
+                                                </span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+                            
+                            {!showEventLog && (
+                                <div className="text-xs text-gray-500">
+                                    {eventLog.length} events logged • Click to expand
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
