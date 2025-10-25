@@ -918,6 +918,19 @@ export function BookView({
     }
   };
 
+  const handleDownloadLogs = () => {
+    const logsContent = logger.exportLogs();
+    const blob = new Blob([logsContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pustakam-generation-log-${new Date().toISOString().replace(/:/g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const getStatusIcon = (status: BookProject['status']) => {
     const iconMap: Record<BookProject['status'], React.ElementType> = {
       planning: Clock,
@@ -1296,15 +1309,76 @@ export function BookView({
                     </div>
                   )}
 
-                  {/* ASSEMBLY CARD */}
-                  {areAllModulesDone && !['completed', 'assembling', 'error'].includes(currentBook.status) && (
-                    <div className="bg-[var(--color-card)] border border-green-500/30 rounded-lg p-6 text-center">
-                      <h3 className="text-lg font-semibold text-green-400 mb-2">All Chapters Written!</h3>
-                      <p className="text-sm text-gray-400 mb-4">All modules have been successfully generated. Now, assemble the final book.</p>
-                      <button onClick={handleStartAssembly} disabled={isGenerating} className="btn btn-secondary">
-                        <Box className="w-4 h-4" />
-                        <span>{isGenerating ? 'Assembling...' : 'Assemble Final Book'}</span>
-                      </button>
+                  {/* NEW: ASSEMBLY CARD / SUMMARY PANEL */}
+                  {areAllModulesDone && currentBook.status === 'roadmap_completed' && generationStats && (
+                    <div className="bg-[var(--color-card)] border border-green-500/30 rounded-lg p-6 space-y-6 animate-fade-in-up">
+                      {/* Header */}
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 flex items-center justify-center bg-green-500/10 rounded-lg">
+                            <CheckCircle className="w-7 h-7 text-green-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-bold text-white">Generation Complete!</h3>
+                            <p className="text-sm text-gray-400">All chapters have been successfully written.</p>
+                          </div>
+                        </div>
+                        <button onClick={handleDownloadLogs} className="btn btn-secondary btn-sm">
+                          <Download size={14} /> Download Logs
+                        </button>
+                      </div>
+
+                      {/* Final Stats */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)] text-center">
+                          <div className="text-xs text-gray-400 mb-1">Completed</div>
+                          <div className="text-2xl font-bold text-green-400 font-mono">{generationStats.completedModules}</div>
+                        </div>
+                        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)] text-center">
+                          <div className="text-xs text-gray-400 mb-1">Failed</div>
+                          <div className="text-2xl font-bold text-red-400 font-mono">{generationStats.failedModules}</div>
+                        </div>
+                        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)] text-center">
+                          <div className="text-xs text-gray-400 mb-1">Total Words</div>
+                          <div className="text-2xl font-bold text-white font-mono">{generationStats.totalWordsGenerated.toLocaleString()}</div>
+                        </div>
+                        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)] text-center">
+                          <div className="text-xs text-gray-400 mb-1">Avg. Speed</div>
+                          <div className="text-2xl font-bold text-purple-400 font-mono">{generationStats.wordsPerMinute.toFixed(0)} WPM</div>
+                        </div>
+                      </div>
+
+                      {/* Action */}
+                      <div>
+                        <p className="text-center text-sm text-gray-400 mb-4">Ready to assemble the final book?</p>
+                        <button onClick={handleStartAssembly} disabled={isGenerating} className="btn btn-primary w-full btn-lg">
+                          <Box className="w-5 h-5" />
+                          <span>Assemble Final Book</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* NEW: ASSEMBLING... PANEL */}
+                  {currentBook.status === 'assembling' && (
+                    <div className="bg-[var(--color-card)] border-2 rounded-lg p-8 space-y-6 animate-assembling-glow">
+                      <div className="flex flex-col items-center text-center gap-4">
+                        <div className="relative w-16 h-16">
+                          <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping"></div>
+                          <div className="relative w-16 h-16 flex items-center justify-center bg-green-500/10 rounded-full">
+                            <Box className="w-8 h-8 text-green-400" />
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="text-2xl font-bold text-white">Assembling Your Book</h3>
+                          <p className="text-gray-400 mt-2 max-w-md mx-auto">
+                            Finalizing chapters, generating the table of contents, and preparing for download. This won't take long...
+                          </p>
+                        </div>
+                      </div>
+                      <div className="w-full bg-black/30 rounded-full h-2.5 overflow-hidden border border-white/10">
+                        <div className="h-full bg-gradient-to-r from-green-500 via-emerald-400 to-green-500 rounded-full animate-slide-in-out"></div>
+                      </div>
                     </div>
                   )}
 
