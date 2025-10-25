@@ -74,6 +74,15 @@
     50% { box-shadow: 0 0 35px 5px rgba(59, 130, 246, 0.15); }
     100% { box-shadow: 0 0 20px 0px rgba(59, 130, 246, 0.1); }
   }
+  @keyframes assembling-glow {
+    0%, 100% { border-color: theme('colors.green.500 / 30%'); box-shadow: 0 0 10px theme('colors.green.500 / 20%'); }
+    50% { border-color: theme('colors.green.500 / 70%'); box-shadow: 0 0 20px theme('colors.green.500 / 40%'); }
+  }
+  @keyframes slide-in-out {
+    0% { transform: translateX(-100%); opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { transform: translateX(100%); opacity: 0.5; }
+  }
 
   /* --- Animation Utilities --- */
   .animate-shimmer { background: linear-gradient(90deg, var(--color-border) 25%, var(--color-card) 50%, var(--color-border) 75%); background-size: 200px 100%; animation: shimmer 1.5s infinite; }
@@ -81,6 +90,8 @@
   .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
   .animate-pulse-subtle { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
   .animate-subtle-glow { animation: subtle-glow 5s ease-in-out infinite; }
+  .animate-assembling-glow { animation: assembling-glow 2.5s ease-in-out infinite; }
+  .animate-slide-in-out { animation: slide-in-out 2s linear infinite; }
 
 
   /* --- Layout --- */
