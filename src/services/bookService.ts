@@ -720,7 +720,8 @@ Return ONLY valid JSON:
         id: roadmapModule.id,
         title: roadmapModule.title,
         attempt: attemptNumber,
-        progress: 0
+        progress: 0,
+        generatedText: '' // THE FIX: Explicitly clear the text box
       },
       totalProgress: 0,
       status: 'generating',
