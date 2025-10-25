@@ -1,4 +1,4 @@
-// src/components/BookView.tsx (Complete Updated Version with Log Fixes)
+// src/components/BookView.tsx - COMPLETE FILE with Live Word Counter & AI Thinking Indicators
 import React, { useEffect, ReactNode, useMemo, useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,13 +11,13 @@ import {
   FileText, Maximize2, Minimize2,
   List, Settings, Moon, ZoomIn, ZoomOut, BookOpen, 
   ChevronUp, RotateCcw, Palette, Hash, Activity, TrendingUp, Zap, Gauge,
-  Terminal, Eye, EyeOff // NEW: Imported icons
+  Terminal, Eye, EyeOff, Search
 } from 'lucide-react';
 import { BookProject, BookSession } from '../types/book';
 import { bookService } from '../services/bookService';
 import { BookAnalytics } from './BookAnalytics';
 import { CustomSelect } from './CustomSelect';
-import { logger } from '../utils/logger'; // NEW: Import logger
+import { logger } from '../utils/logger';
 
 type AppView = 'list' | 'create' | 'detail';
 
@@ -34,6 +34,7 @@ interface GenerationStatus {
   status: 'idle' | 'generating' | 'completed' | 'error';
   logMessage?: string;
   totalWordsGenerated?: number;
+  aiStage?: 'analyzing' | 'writing' | 'examples' | 'polishing' | 'complete'; // NEW
 }
 
 interface GenerationStats {
@@ -67,7 +68,202 @@ interface BookViewProps {
   generationStats?: GenerationStats;
 }
 
-// Embedded Progress Panel Component
+// ============================================================================
+// NEW: Animated Word Counter Component
+// ============================================================================
+function AnimatedWordCounter({ 
+  targetCount, 
+  duration = 1000,
+  label = "Total Words"
+}: { 
+  targetCount: number; 
+  duration?: number;
+  label?: string;
+}) {
+  const [displayCount, setDisplayCount] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    if (targetCount === displayCount) return;
+    
+    setIsAnimating(true);
+    const startCount = displayCount;
+    const difference = targetCount - startCount;
+    const startTime = Date.now();
+    
+    const animateCount = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing function for smooth animation
+      const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+      const currentCount = Math.floor(startCount + (difference * easeOutQuart));
+      
+      setDisplayCount(currentCount);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animateCount);
+      } else {
+        setDisplayCount(targetCount);
+        setIsAnimating(false);
+      }
+    };
+    
+    requestAnimationFrame(animateCount);
+  }, [targetCount, duration, displayCount]);
+
+  return (
+    <div className="relative bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-3 border border-blue-500/20">
+      <div className="flex items-center gap-2">
+        <div className={`w-8 h-8 flex items-center justify-center bg-blue-500/20 rounded-lg ${
+          isAnimating ? 'animate-pulse' : ''
+        }`}>
+          <Hash className="w-4 h-4 text-blue-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">
+            {label}
+          </div>
+          <div className="flex items-baseline gap-1.5 mt-0.5">
+            <span className={`text-xl font-bold font-mono bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent transition-all duration-300 ${
+              isAnimating ? 'scale-110' : 'scale-100'
+            }`}>
+              {displayCount.toLocaleString()}
+            </span>
+            {isAnimating && (
+              <TrendingUp className="w-3 h-3 text-green-400 animate-bounce" />
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {isAnimating && (
+        <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/10 to-transparent" 
+               style={{ 
+                 backgroundSize: '200% 100%',
+                 animation: 'shimmer 2s infinite'
+               }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// NEW: AI Thinking Indicator Component
+// ============================================================================
+type AIThinkingStage = 'analyzing' | 'writing' | 'examples' | 'polishing' | 'complete';
+
+const stageConfig: Record<AIThinkingStage, {
+  icon: React.ElementType;
+  message: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}> = {
+  analyzing: {
+    icon: Brain,
+    message: '🧠 Analyzing module objectives...',
+    color: 'text-purple-400',
+    bgColor: 'bg-purple-500/10',
+    borderColor: 'border-purple-500/30'
+  },
+  writing: {
+    icon: Edit,
+    message: '✍️ Writing core concepts...',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30'
+  },
+  examples: {
+    icon: Search,
+    message: '🔍 Adding practical examples...',
+    color: 'text-green-400',
+    bgColor: 'bg-green-500/10',
+    borderColor: 'border-green-500/30'
+  },
+  polishing: {
+    icon: Sparkles,
+    message: '✨ Polishing content and formatting...',
+    color: 'text-yellow-400',
+    bgColor: 'bg-yellow-500/10',
+    borderColor: 'border-yellow-500/30'
+  },
+  complete: {
+    icon: CheckCircle,
+    message: '✓ Module complete!',
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30'
+  }
+};
+
+function AIThinkingIndicator({ stage, progress = 0 }: { stage: AIThinkingStage; progress?: number }) {
+  const config = stageConfig[stage];
+  const Icon = config.icon;
+
+  return (
+    <div className={`relative rounded-lg border ${config.borderColor} ${config.bgColor} p-3 overflow-hidden`}>
+      <div className="flex items-center gap-2.5 relative z-10">
+        <div className={`w-8 h-8 flex items-center justify-center rounded-lg ${config.bgColor} ${
+          stage !== 'complete' ? 'animate-pulse' : ''
+        }`}>
+          <Icon className={`w-4 h-4 ${config.color} ${
+            stage !== 'complete' ? 'animate-spin' : ''
+          }`} style={{
+            animationDuration: stage === 'analyzing' ? '3s' : stage === 'writing' ? '2s' : '1.5s'
+          }} />
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-medium ${config.color}`}>
+              {config.message}
+            </span>
+            {stage !== 'complete' && (
+              <div className="flex gap-0.5">
+                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" 
+                      style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" 
+                      style={{ animationDelay: '150ms' }} />
+                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" 
+                      style={{ animationDelay: '300ms' }} />
+              </div>
+            )}
+          </div>
+          
+          {progress > 0 && (
+            <div className="w-full bg-black/30 rounded-full h-1 overflow-hidden mt-1.5">
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${config.bgColor.replace('/10', '/40')}`}
+                style={{ 
+                  width: `${progress}%`,
+                  boxShadow: `0 0 8px ${config.color.replace('text-', '').replace('-400', '')}`
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {stage !== 'complete' && (
+        <div className="absolute inset-0 pointer-events-none">
+          <div 
+            className="absolute inset-0 opacity-20"
+            style={{
+              background: `linear-gradient(90deg, transparent, ${config.color.replace('text-', 'rgba(').replace('-400', ', 0.1)')}, transparent)`,
+              backgroundSize: '200% 100%',
+              animation: 'shimmer 2s infinite'
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Embedded Progress Panel Component with NEW FEATURES
 const EmbeddedProgressPanel = ({ 
   generationStatus, 
   stats, 
@@ -77,10 +273,21 @@ const EmbeddedProgressPanel = ({
   stats: GenerationStats;
   onCancel?: () => void;
 }) => {
-  // NEW: Log state and effect
   const [eventLog, setEventLog] = useState(() => logger.getLogs());
   const [showEventLog, setShowEventLog] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
+
+  // NEW: Determine AI stage based on progress
+  const currentAIStage: AIThinkingStage = useMemo(() => {
+    if (!generationStatus.currentModule) return 'analyzing';
+    const progress = generationStatus.currentModule.progress;
+    
+    if (progress >= 95) return 'complete';
+    if (progress >= 70) return 'polishing';
+    if (progress >= 40) return 'examples';
+    if (progress >= 10) return 'writing';
+    return 'analyzing';
+  }, [generationStatus.currentModule?.progress]);
 
   useEffect(() => {
     const unsubscribe = logger.subscribe(setEventLog);
@@ -93,7 +300,6 @@ const EmbeddedProgressPanel = ({
     }
   }, [eventLog, showEventLog]);
 
-  // NEW: Log download handler
   const handleDownloadLogs = () => {
     const logsContent = logger.exportLogs();
     const blob = new Blob([logsContent], { type: 'text/plain;charset=utf-8' });
@@ -106,7 +312,6 @@ const EmbeddedProgressPanel = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
 
   const formatTime = (seconds: number): string => {
     if (isNaN(seconds) || seconds < 1) return '--';
@@ -161,6 +366,14 @@ const EmbeddedProgressPanel = ({
         </div>
       </div>
 
+      {/* NEW: AI Thinking Indicator */}
+      {generationStatus.currentModule && (
+        <AIThinkingIndicator 
+          stage={currentAIStage}
+          progress={generationStatus.currentModule.progress}
+        />
+      )}
+
       {/* Current Module */}
       {generationStatus.currentModule && (
         <div className="bg-black/20 rounded-lg p-4 border border-[var(--color-border)]">
@@ -187,7 +400,7 @@ const EmbeddedProgressPanel = ({
         </div>
       )}
 
-      {/* Statistics Grid */}
+      {/* Statistics Grid with NEW Animated Word Counter */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
@@ -205,13 +418,12 @@ const EmbeddedProgressPanel = ({
           <div className="text-xl font-bold text-white font-mono">{stats.failedModules}</div>
         </div>
         
-        <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
-          <div className="flex items-center gap-2 mb-1">
-            <FileText className="w-4 h-4 text-blue-400" />
-            <span className="text-xs text-gray-400">Words</span>
-          </div>
-          <div className="text-xl font-bold text-white font-mono">{stats.totalWordsGenerated.toLocaleString()}</div>
-        </div>
+        {/* NEW: Animated Word Counter */}
+        <AnimatedWordCounter 
+          targetCount={stats.totalWordsGenerated}
+          duration={800}
+          label="Words"
+        />
         
         <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
@@ -238,7 +450,7 @@ const EmbeddedProgressPanel = ({
         </div>
       </div>
 
-      {/* NEW: JSX for System Log section */}
+      {/* System Log */}
       <div className="bg-black/20 p-3 rounded-lg border border-[var(--color-border)]">
         <div className="flex items-center justify-between mb-2">
             <h4 className="text-xs font-semibold text-gray-400 flex items-center gap-2">
@@ -799,6 +1011,7 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
   );
 };
 
+// Main BookView Export Component
 export function BookView({
   books,
   currentBookId,
