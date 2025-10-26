@@ -27,6 +27,7 @@ export interface GenerationStatus {
   status: 'idle' | 'generating' | 'completed' | 'error';
   logMessage?: string;
   totalWordsGenerated?: number;
+  aiStage?: 'analyzing' | 'writing' | 'examples' | 'polishing' | 'complete';
 }
 
 class BookGenerationService {
@@ -867,7 +868,9 @@ Return ONLY valid JSON:
     return roadmap;
   }
 
-  // MODULE GENERATION WITH RETRY - REAL STREAMING
+  // =======================================================
+  // CRITICAL UPDATE: REVISED generateModuleContentWithRetry
+  // =======================================================
   async generateModuleContentWithRetry(
     book: BookProject,
     roadmapModule: RoadmapModule,
@@ -883,7 +886,7 @@ Return ONLY valid JSON:
 
     const totalWordsBefore = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
 
-    // Clear previous text FIRST, before showing the status
+    // Clear previous text FIRST
     this.currentGeneratedTexts.set(book.id, '');
 
     this.updateGenerationStatus(book.id, {
@@ -892,11 +895,13 @@ Return ONLY valid JSON:
         title: roadmapModule.title,
         attempt: attemptNumber,
         progress: 0,
-        generatedText: '' // Start with empty text
+        generatedText: ''
       },
       totalProgress: 0,
       status: 'generating',
-      logMessage: `Starting: ${roadmapModule.title} (Attempt ${attemptNumber}/${this.MAX_MODULE_RETRIES})`
+      logMessage: `Starting: ${roadmapModule.title} (Attempt ${attemptNumber}/${this.MAX_MODULE_RETRIES})`,
+      totalWordsGenerated: totalWordsBefore,
+      aiStage: 'analyzing'
     });
 
     try {
@@ -915,27 +920,37 @@ Return ONLY valid JSON:
 
       const generationStartTime = Date.now();
       
-      // REAL-TIME STREAMING with immediate callback
+      // REAL-TIME STREAMING with word count updates
       const moduleContent = await this.generateWithAI(prompt, book.id, (chunk) => {
-        // Accumulate chunks for real-time streaming
         const currentText = (this.currentGeneratedTexts.get(book.id) || '') + chunk;
         this.currentGeneratedTexts.set(book.id, currentText);
         
-        // Calculate progress based on estimated content length
-        const estimatedLength = 3000;
-        const progress = Math.min(95, (currentText.length / estimatedLength) * 100);
+        // Calculate REAL-TIME word count
+        const currentWordCount = currentText.split(/\s+/).filter(w => w.length > 0).length;
         
-        // Update status in real-time as chunks arrive
+        // Estimate progress (3000 words target)
+        const estimatedWordTarget = 3000;
+        const progress = Math.min(95, (currentWordCount / estimatedWordTarget) * 100);
+        
+        // Determine AI stage based on word count
+        let aiStage: GenerationStatus['aiStage'] = 'analyzing';
+        if (currentWordCount >= estimatedWordTarget * 0.9) aiStage = 'polishing';
+        else if (currentWordCount >= estimatedWordTarget * 0.6) aiStage = 'examples';
+        else if (currentWordCount >= estimatedWordTarget * 0.15) aiStage = 'writing';
+        
+        // Update status in real-time
         this.updateGenerationStatus(book.id, {
           currentModule: {
             id: roadmapModule.id,
             title: roadmapModule.title,
             attempt: attemptNumber,
             progress,
-            generatedText: currentText
+            generatedText: currentText.slice(-800) // Show last 800 chars for performance
           },
           totalProgress: 0,
-          status: 'generating'
+          status: 'generating',
+          totalWordsGenerated: totalWordsBefore + currentWordCount, // REAL-TIME UPDATE
+          aiStage
         });
       });
 
@@ -969,32 +984,36 @@ Return ONLY valid JSON:
         attempt: attemptNumber
       }, 'ModuleGeneration');
 
+      // Clear generated text on completion
+      this.currentGeneratedTexts.delete(book.id);
+
       this.updateGenerationStatus(book.id, {
         currentModule: {
           id: roadmapModule.id,
           title: roadmapModule.title,
           attempt: attemptNumber,
           progress: 100
+          // No generatedText = hide streaming box
         },
         totalProgress: 0,
         status: 'generating',
         logMessage: `✓ Completed: ${roadmapModule.title} (${wordCount} words in ${Math.round(generationDuration / 1000)}s)`,
         totalWordsGenerated: totalWordsBefore + wordCount,
+        aiStage: 'complete'
       });
 
       return module;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const isRateLimit = this.isRateLimitError(error);
       
       logger.error('Module generation failed', {
         moduleTitle: roadmapModule.title,
         attempt: attemptNumber,
         error: errorMessage,
-        isRateLimit
       }, 'ModuleGeneration');
 
       if (this.shouldRetry(error, attemptNumber)) {
+        const isRateLimit = this.isRateLimitError(error);
         const delay = this.calculateRetryDelay(attemptNumber, isRateLimit);
         
         logger.warn(`Retrying module generation after ${Math.round(delay / 1000)}s`, {
