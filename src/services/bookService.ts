@@ -1,4 +1,4 @@
-// src/services/bookService.ts - REAL SSE STREAMING VERSION
+// src/services/bookService.ts - COMPLETE FILE WITH FIXED CHECKPOINT RECOVERY
 import { BookProject, BookRoadmap, BookModule, RoadmapModule, BookSession } from '../types/book';
 import { APISettings, ModelProvider } from '../types';
 import { generateId } from '../utils/helpers';
@@ -88,7 +88,9 @@ class BookGenerationService {
     this.currentGeneratedTexts.delete(bookId);
   }
 
-  // CHECKPOINT METHODS (unchanged)
+  // ============================================================================
+  // FIXED CHECKPOINT METHODS
+  // ============================================================================
   private saveCheckpoint(
     bookId: string, 
     completedModuleIds: string[], 
@@ -104,17 +106,24 @@ class BookGenerationService {
       lastSuccessfulIndex: lastIndex,
       timestamp: new Date()
     };
+    
     this.checkpoints.set(bookId, checkpoint);
     
     try {
-      localStorage.setItem(`checkpoint_${bookId}`, JSON.stringify(checkpoint));
-      logger.debug('Checkpoint saved', { 
+      // CRITICAL FIX: Convert Date to string before saving
+      const checkpointToSave = {
+        ...checkpoint,
+        timestamp: checkpoint.timestamp.toISOString()
+      };
+      
+      localStorage.setItem(`checkpoint_${bookId}`, JSON.stringify(checkpointToSave));
+      logger.info('✓ Checkpoint saved', { 
         bookId, 
         completedCount: completedModuleIds.length,
         failedCount: failedModuleIds.length 
       }, 'Checkpoint');
     } catch (error) {
-      logger.warn('Failed to save checkpoint to localStorage', error, 'Checkpoint');
+      logger.warn('Failed to save checkpoint', error, 'Checkpoint');
     }
   }
 
@@ -126,13 +135,27 @@ class BookGenerationService {
     try {
       const stored = localStorage.getItem(`checkpoint_${bookId}`);
       if (stored) {
-        const checkpoint = JSON.parse(stored);
-        checkpoint.timestamp = new Date(checkpoint.timestamp);
-        checkpoint.moduleRetryCount = checkpoint.moduleRetryCount || {};
+        const parsed = JSON.parse(stored);
+        
+        // CRITICAL FIX: Convert timestamp string back to Date
+        const checkpoint: GenerationCheckpoint = {
+          ...parsed,
+          timestamp: new Date(parsed.timestamp),
+          moduleRetryCount: parsed.moduleRetryCount || {}
+        };
+        
+        this.checkpoints.set(bookId, checkpoint);
+        
+        logger.info('✓ Checkpoint loaded', {
+          bookId,
+          completedCount: checkpoint.completedModuleIds.length,
+          failedCount: checkpoint.failedModuleIds.length
+        }, 'Checkpoint');
+        
         return checkpoint;
       }
     } catch (error) {
-      logger.warn('Failed to load checkpoint from localStorage', error, 'Checkpoint');
+      logger.warn('Failed to load checkpoint', error, 'Checkpoint');
     }
     
     return null;
@@ -144,11 +167,11 @@ class BookGenerationService {
       localStorage.removeItem(`checkpoint_${bookId}`);
       logger.debug('Checkpoint cleared', { bookId }, 'Checkpoint');
     } catch (error) {
-      logger.warn('Failed to clear checkpoint from localStorage', error, 'Checkpoint');
+      logger.warn('Failed to clear checkpoint', error, 'Checkpoint');
     }
   }
 
-  // VALIDATION METHODS (unchanged)
+  // VALIDATION METHODS
   validateSettings(): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
     if (!this.settings.selectedProvider) errors.push('No AI provider selected');
@@ -170,12 +193,12 @@ class BookGenerationService {
   private getApiKey(): string {
     const key = this.getApiKeyForProvider(this.settings.selectedProvider);
     if (!key) {
-      throw new Error(`${this.settings.selectedProvider} API key not configured. Please add your API key in Settings.`);
+      throw new Error(`${this.settings.selectedProvider} API key not configured`);
     }
     return key;
   }
 
-  // ERROR HANDLING METHODS (unchanged)
+  // ERROR HANDLING METHODS
   private isRateLimitError(error: any): boolean {
     const errorMessage = error?.message?.toLowerCase() || '';
     const statusCode = error?.status || error?.response?.status;
@@ -185,8 +208,7 @@ class BookGenerationService {
       statusCode === 503 ||
       errorMessage.includes('rate limit') ||
       errorMessage.includes('quota') ||
-      errorMessage.includes('too many requests') ||
-      errorMessage.includes('resource exhausted')
+      errorMessage.includes('too many requests')
     );
   }
 
@@ -208,13 +230,7 @@ class BookGenerationService {
     }
     
     const errorMessage = error?.message?.toLowerCase() || '';
-    const retryableErrors = [
-      'timeout',
-      'overloaded',
-      'unavailable',
-      'internal error',
-      'bad gateway'
-    ];
+    const retryableErrors = ['timeout', 'overloaded', 'unavailable', 'internal error', 'bad gateway'];
     
     return retryableErrors.some(msg => errorMessage.includes(msg));
   }
@@ -226,12 +242,10 @@ class BookGenerationService {
     
     const exponentialDelay = this.RETRY_DELAY_BASE * Math.pow(2, attempt - 1);
     const jitter = Math.random() * 1000;
-    const delay = Math.min(exponentialDelay + jitter, this.MAX_RETRY_DELAY);
-    
-    return delay;
+    return Math.min(exponentialDelay + jitter, this.MAX_RETRY_DELAY);
   }
 
-  // AI GENERATION CORE METHOD
+  // AI GENERATION CORE
   private async generateWithAI(prompt: string, bookId?: string, onChunk?: (chunk: string) => void): Promise<string> {
     const validation = this.validateSettings();
     if (!validation.isValid) {
@@ -239,7 +253,7 @@ class BookGenerationService {
     }
 
     if (!navigator.onLine) {
-      throw new Error('No internet connection. Please check your connection and try again.');
+      throw new Error('No internet connection');
     }
 
     const requestId = bookId || generateId();
@@ -274,28 +288,16 @@ class BookGenerationService {
   }
 
   // ============================================================================
-  // REAL SSE STREAMING - GOOGLE GEMINI
+  // GOOGLE GEMINI STREAMING
   // ============================================================================
   private async generateWithGoogle(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
     const maxRetries = 3;
     let attempt = 0;
-    const startTime = Date.now();
-
-    logger.api('Initiating Google AI streaming request', {
-      provider: 'Google Gemini',
-      model,
-      promptLength: prompt.length,
-      streaming: !!onChunk,
-      attempt: 1
-    }, 'GoogleAI');
 
     while (attempt < maxRetries) {
       try {
-        const requestStartTime = Date.now();
-        
-        // Use streaming endpoint
         const streamEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
         
         const response = await fetch(streamEndpoint, {
@@ -313,15 +315,8 @@ class BookGenerationService {
           signal
         });
 
-        const requestDuration = Date.now() - requestStartTime;
-
         if (response.status === 429 || response.status === 503) {
           const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
-          logger.warn(`Google API rate limited (${response.status}). Retrying in ${Math.round(delay / 1000)}s...`, {
-            statusCode: response.status,
-            retryDelay: delay,
-            attempt: attempt + 1
-          }, 'GoogleAI');
           await sleep(delay);
           attempt++;
           continue;
@@ -329,19 +324,11 @@ class BookGenerationService {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          const error = new Error(errorData?.error?.message || `HTTP ${response.status}`);
-          (error as any).status = response.status;
-          logger.error(`Google AI streaming request failed`, {
-            statusCode: response.status,
-            error: errorData?.error?.message,
-            duration: requestDuration
-          }, 'GoogleAI');
-          throw error;
+          throw new Error(errorData?.error?.message || `HTTP ${response.status}`);
         }
 
-        // REAL STREAMING IMPLEMENTATION
         if (!response.body) {
-          throw new Error('Response body is null - streaming not supported');
+          throw new Error('Response body is null');
         }
 
         const reader = response.body.getReader();
@@ -349,84 +336,50 @@ class BookGenerationService {
         let fullContent = '';
         let buffer = '';
 
-        logger.debug('Starting stream processing', {}, 'GoogleAI');
-
         while (true) {
           const { done, value } = await reader.read();
           
-          if (done) {
-            logger.debug('Stream completed', { totalLength: fullContent.length }, 'GoogleAI');
-            break;
-          }
+          if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          
-          // Google's SSE format: "data: {...}\n\n"
           const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // Keep incomplete line
+          buffer = lines.pop() || '';
 
           for (const line of lines) {
             const trimmedLine = line.trim();
             
             if (trimmedLine.startsWith('data: ')) {
-              const jsonStr = trimmedLine.substring(6); // Remove "data: " prefix
+              const jsonStr = trimmedLine.substring(6);
               
-              if (jsonStr === '[DONE]') {
-                continue;
-              }
+              if (jsonStr === '[DONE]') continue;
 
               try {
                 const data = JSON.parse(jsonStr);
-                
-                // Extract text from Gemini stream chunk
                 const textPart = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
                 
                 if (textPart) {
                   fullContent += textPart;
-                  
-                  // Call onChunk immediately with the new text
-                  if (onChunk) {
-                    onChunk(textPart);
-                  }
+                  if (onChunk) onChunk(textPart);
                 }
               } catch (parseError) {
-                logger.warn('Failed to parse stream chunk', { 
-                  error: parseError instanceof Error ? parseError.message : 'Unknown',
-                  line: jsonStr.substring(0, 100) 
-                }, 'GoogleAI');
+                // Ignore parse errors
               }
             }
           }
         }
 
         if (!fullContent) {
-          throw new Error('No content generated from stream');
+          throw new Error('No content generated');
         }
-
-        const totalDuration = Date.now() - startTime;
-        logger.api('Google AI streaming completed successfully', {
-          provider: 'Google Gemini',
-          model,
-          promptLength: prompt.length,
-          responseLength: fullContent.length,
-          duration: totalDuration,
-          wordCount: fullContent.split(/\s+/).length
-        }, 'GoogleAI');
         
         return fullContent;
 
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          logger.warn('Google AI request aborted by user', {}, 'GoogleAI');
           throw error;
         }
         attempt++;
-        if (attempt >= maxRetries) {
-          logger.error(`Google AI request failed after ${maxRetries} attempts`, {
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }, 'GoogleAI');
-          throw error;
-        }
+        if (attempt >= maxRetries) throw error;
         await sleep(Math.pow(2, attempt) * 1000);
       }
     }
@@ -434,27 +387,16 @@ class BookGenerationService {
   }
 
   // ============================================================================
-  // REAL SSE STREAMING - MISTRAL AI
+  // MISTRAL AI STREAMING
   // ============================================================================
   private async generateWithMistral(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
     const maxRetries = 3;
     let attempt = 0;
-    const startTime = Date.now();
-
-    logger.api('Initiating Mistral AI streaming request', {
-      provider: 'Mistral AI',
-      model,
-      promptLength: prompt.length,
-      streaming: !!onChunk,
-      attempt: 1
-    }, 'MistralAI');
 
     while (attempt < maxRetries) {
       try {
-        const requestStartTime = Date.now();
-
         const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
           method: 'POST',
           headers: { 
@@ -466,20 +408,13 @@ class BookGenerationService {
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.7,
             max_tokens: 8192,
-            stream: true // Enable streaming
+            stream: true
           }),
           signal
         });
 
-        const requestDuration = Date.now() - requestStartTime;
-
         if (response.status === 429) {
           const delay = Math.pow(2, attempt) * 1000;
-          logger.warn(`Mistral API rate limited. Retrying in ${Math.round(delay / 1000)}s...`, {
-            statusCode: response.status,
-            retryDelay: delay,
-            attempt: attempt + 1
-          }, 'MistralAI');
           await sleep(delay);
           attempt++;
           continue;
@@ -487,19 +422,11 @@ class BookGenerationService {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          const error = new Error(errorData?.error?.message || `Mistral API Error: ${response.status}`);
-          (error as any).status = response.status;
-          logger.error(`Mistral AI streaming request failed`, {
-            statusCode: response.status,
-            error: errorData?.error?.message,
-            duration: requestDuration
-          }, 'MistralAI');
-          throw error;
+          throw new Error(errorData?.error?.message || `Mistral API Error: ${response.status}`);
         }
 
-        // REAL STREAMING IMPLEMENTATION
         if (!response.body) {
-          throw new Error('Response body is null - streaming not supported');
+          throw new Error('Response body is null');
         }
 
         const reader = response.body.getReader();
@@ -507,19 +434,12 @@ class BookGenerationService {
         let fullContent = '';
         let buffer = '';
 
-        logger.debug('Starting stream processing', {}, 'MistralAI');
-
         while (true) {
           const { done, value } = await reader.read();
           
-          if (done) {
-            logger.debug('Stream completed', { totalLength: fullContent.length }, 'MistralAI');
-            break;
-          }
+          if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          
-          // Mistral SSE format: "data: {...}\n\n"
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
@@ -529,61 +449,35 @@ class BookGenerationService {
             if (trimmedLine.startsWith('data: ')) {
               const jsonStr = trimmedLine.substring(6);
               
-              if (jsonStr === '[DONE]') {
-                continue;
-              }
+              if (jsonStr === '[DONE]') continue;
 
               try {
                 const data = JSON.parse(jsonStr);
-                
-                // Extract text from Mistral stream chunk
                 const textPart = data?.choices?.[0]?.delta?.content || '';
                 
                 if (textPart) {
                   fullContent += textPart;
-                  
-                  if (onChunk) {
-                    onChunk(textPart);
-                  }
+                  if (onChunk) onChunk(textPart);
                 }
               } catch (parseError) {
-                logger.warn('Failed to parse stream chunk', { 
-                  error: parseError instanceof Error ? parseError.message : 'Unknown',
-                  line: jsonStr.substring(0, 100) 
-                }, 'MistralAI');
+                // Ignore parse errors
               }
             }
           }
         }
 
         if (!fullContent) {
-          throw new Error('No content generated from stream');
+          throw new Error('No content generated');
         }
-
-        const totalDuration = Date.now() - startTime;
-        logger.api('Mistral AI streaming completed successfully', {
-          provider: 'Mistral AI',
-          model,
-          promptLength: prompt.length,
-          responseLength: fullContent.length,
-          duration: totalDuration,
-          wordCount: fullContent.split(/\s+/).length
-        }, 'MistralAI');
         
         return fullContent;
 
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          logger.warn('Mistral AI request aborted by user', {}, 'MistralAI');
           throw error;
         }
         attempt++;
-        if (attempt >= maxRetries) {
-          logger.error(`Mistral AI request failed after ${maxRetries} attempts`, {
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }, 'MistralAI');
-          throw error;
-        }
+        if (attempt >= maxRetries) throw error;
         await sleep(Math.pow(2, attempt) * 1000);
       }
     }
@@ -591,27 +485,16 @@ class BookGenerationService {
   }
 
   // ============================================================================
-  // REAL SSE STREAMING - ZHIPU AI
+  // ZHIPU AI STREAMING
   // ============================================================================
   private async generateWithZhipu(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
     const maxRetries = 3;
     let attempt = 0;
-    const startTime = Date.now();
-
-    logger.api('Initiating ZhipuAI streaming request', {
-      provider: 'ZhipuAI',
-      model,
-      promptLength: prompt.length,
-      streaming: !!onChunk,
-      attempt: 1
-    }, 'ZhipuAI');
 
     while (attempt < maxRetries) {
       try {
-        const requestStartTime = Date.now();
-
         const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
           method: 'POST',
           headers: { 
@@ -623,20 +506,13 @@ class BookGenerationService {
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.7,
             max_tokens: 8192,
-            stream: true // Enable streaming
+            stream: true
           }),
           signal
         });
 
-        const requestDuration = Date.now() - requestStartTime;
-
         if (response.status === 429 || response.status === 503) {
           const delay = Math.pow(2, attempt) * 1000;
-          logger.warn(`ZhipuAI rate limited. Retrying in ${Math.round(delay / 1000)}s...`, {
-            statusCode: response.status,
-            retryDelay: delay,
-            attempt: attempt + 1
-          }, 'ZhipuAI');
           await sleep(delay);
           attempt++;
           continue;
@@ -644,19 +520,11 @@ class BookGenerationService {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          const error = new Error(errorData?.error?.message || `ZhipuAI API Error: ${response.status}`);
-          (error as any).status = response.status;
-          logger.error(`ZhipuAI streaming request failed`, {
-            statusCode: response.status,
-            error: errorData?.error?.message,
-            duration: requestDuration
-          }, 'ZhipuAI');
-          throw error;
+          throw new Error(errorData?.error?.message || `ZhipuAI API Error: ${response.status}`);
         }
 
-        // REAL STREAMING IMPLEMENTATION
         if (!response.body) {
-          throw new Error('Response body is null - streaming not supported');
+          throw new Error('Response body is null');
         }
 
         const reader = response.body.getReader();
@@ -664,19 +532,12 @@ class BookGenerationService {
         let fullContent = '';
         let buffer = '';
 
-        logger.debug('Starting stream processing', {}, 'ZhipuAI');
-
         while (true) {
           const { done, value } = await reader.read();
           
-          if (done) {
-            logger.debug('Stream completed', { totalLength: fullContent.length }, 'ZhipuAI');
-            break;
-          }
+          if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          
-          // ZhipuAI SSE format: "data: {...}\n\n"
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
@@ -686,75 +547,44 @@ class BookGenerationService {
             if (trimmedLine.startsWith('data: ')) {
               const jsonStr = trimmedLine.substring(6);
               
-              if (jsonStr === '[DONE]') {
-                continue;
-              }
+              if (jsonStr === '[DONE]') continue;
 
               try {
                 const data = JSON.parse(jsonStr);
-                
-                // Extract text from ZhipuAI stream chunk
                 const textPart = data?.choices?.[0]?.delta?.content || '';
                 
                 if (textPart) {
                   fullContent += textPart;
-                  
-                  if (onChunk) {
-                    onChunk(textPart);
-                  }
+                  if (onChunk) onChunk(textPart);
                 }
               } catch (parseError) {
-                logger.warn('Failed to parse stream chunk', { 
-                  error: parseError instanceof Error ? parseError.message : 'Unknown',
-                  line: jsonStr.substring(0, 100) 
-                }, 'ZhipuAI');
+                // Ignore parse errors
               }
             }
           }
         }
 
         if (!fullContent) {
-          throw new Error('No content generated from stream');
+          throw new Error('No content generated');
         }
-
-        const totalDuration = Date.now() - startTime;
-        logger.api('ZhipuAI streaming completed successfully', {
-          provider: 'ZhipuAI',
-          model,
-          promptLength: prompt.length,
-          responseLength: fullContent.length,
-          duration: totalDuration,
-          wordCount: fullContent.split(/\s+/).length
-        }, 'ZhipuAI');
         
         return fullContent;
 
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          logger.warn('ZhipuAI request aborted by user', {}, 'ZhipuAI');
           throw error;
         }
         attempt++;
-        if (attempt >= maxRetries) {
-          logger.error(`ZhipuAI request failed after ${maxRetries} attempts`, {
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }, 'ZhipuAI');
-          throw error;
-        }
+        if (attempt >= maxRetries) throw error;
         await sleep(Math.pow(2, attempt) * 1000);
       }
     }
     throw new Error('ZhipuAI API failed after retries');
   }
 
-  // ROADMAP GENERATION (unchanged)
+  // ROADMAP GENERATION
   async generateRoadmap(session: BookSession, bookId: string): Promise<BookRoadmap> {
-    logger.info('Starting roadmap generation', { 
-      bookId,
-      goal: session.goal,
-      complexity: session.complexityLevel,
-      targetAudience: session.targetAudience
-    }, 'RoadmapGeneration');
+    logger.info('Starting roadmap generation', { bookId }, 'RoadmapGeneration');
     
     this.updateProgress(bookId, { status: 'generating_roadmap', progress: 5 });
 
@@ -764,47 +594,17 @@ class BookGenerationService {
     while (attempt < maxAttempts) {
       try {
         const prompt = this.buildRoadmapPrompt(session);
-        
-        logger.debug('Roadmap prompt built', {
-          promptLength: prompt.length,
-          attempt: attempt + 1
-        }, 'RoadmapGeneration');
-
-        const startTime = Date.now();
         const response = await this.generateWithAI(prompt, bookId);
-        const duration = Date.now() - startTime;
-        
-        logger.debug('Roadmap response received', {
-          responseLength: response.length,
-          duration
-        }, 'RoadmapGeneration');
-
         const roadmap = await this.parseRoadmapResponse(response, session);
-        
-        logger.info('Roadmap generation successful', {
-          totalModules: roadmap.totalModules,
-          estimatedTime: roadmap.estimatedReadingTime,
-          difficulty: roadmap.difficultyLevel
-        }, 'RoadmapGeneration');
         
         this.updateProgress(bookId, { status: 'roadmap_completed', progress: 10, roadmap });
         return roadmap;
       } catch (error) {
         attempt++;
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        logger.error('Roadmap generation attempt failed', {
-          attempt,
-          maxAttempts,
-          error: errorMessage
-        }, 'RoadmapGeneration');
-
         if (attempt >= maxAttempts) {
-          this.updateProgress(bookId, { status: 'error', error: `Roadmap generation failed: ${errorMessage}` });
+          this.updateProgress(bookId, { status: 'error', error: 'Roadmap generation failed' });
           throw error;
         }
-        
-        logger.info('Retrying roadmap generation', { attempt: attempt + 1 }, 'RoadmapGeneration');
         await sleep(2000);
       }
     }
@@ -844,7 +644,7 @@ Return ONLY valid JSON:
 
     let jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('Invalid response format: No valid JSON found');
+      throw new Error('Invalid response format');
     }
 
     const roadmap = JSON.parse(jsonMatch[0]);
@@ -868,9 +668,7 @@ Return ONLY valid JSON:
     return roadmap;
   }
 
-  // =======================================================
-  // CRITICAL UPDATE: REVISED generateModuleContentWithRetry
-  // =======================================================
+  // MODULE GENERATION
   async generateModuleContentWithRetry(
     book: BookProject,
     roadmapModule: RoadmapModule,
@@ -880,13 +678,10 @@ Return ONLY valid JSON:
     logger.info('Starting module generation', {
       bookId: book.id,
       moduleTitle: roadmapModule.title,
-      attempt: attemptNumber,
-      totalModules: book.roadmap?.totalModules
+      attempt: attemptNumber
     }, 'ModuleGeneration');
 
     const totalWordsBefore = book.modules.reduce((sum, m) => sum + (m.status === 'completed' ? m.wordCount : 0), 0);
-
-    // Clear previous text FIRST
     this.currentGeneratedTexts.set(book.id, '');
 
     this.updateGenerationStatus(book.id, {
@@ -899,7 +694,7 @@ Return ONLY valid JSON:
       },
       totalProgress: 0,
       status: 'generating',
-      logMessage: `Starting: ${roadmapModule.title} (Attempt ${attemptNumber}/${this.MAX_MODULE_RETRIES})`,
+      logMessage: `Starting: ${roadmapModule.title}`,
       totalWordsGenerated: totalWordsBefore,
       aiStage: 'analyzing'
     });
@@ -912,58 +707,38 @@ Return ONLY valid JSON:
 
       const prompt = this.buildModulePrompt(session, roadmapModule, previousModules, isFirstModule, moduleIndex, totalModules);
       
-      logger.debug('Built module prompt', {
-        promptLength: prompt.length,
-        moduleIndex,
-        isFirstModule
-      }, 'ModuleGeneration');
-
-      const generationStartTime = Date.now();
-      
-      // REAL-TIME STREAMING with word count updates
       const moduleContent = await this.generateWithAI(prompt, book.id, (chunk) => {
         const currentText = (this.currentGeneratedTexts.get(book.id) || '') + chunk;
         this.currentGeneratedTexts.set(book.id, currentText);
         
-        // Calculate REAL-TIME word count
         const currentWordCount = currentText.split(/\s+/).filter(w => w.length > 0).length;
-        
-        // Estimate progress (3000 words target)
         const estimatedWordTarget = 3000;
         const progress = Math.min(95, (currentWordCount / estimatedWordTarget) * 100);
         
-        // Determine AI stage based on word count
         let aiStage: GenerationStatus['aiStage'] = 'analyzing';
         if (currentWordCount >= estimatedWordTarget * 0.9) aiStage = 'polishing';
         else if (currentWordCount >= estimatedWordTarget * 0.6) aiStage = 'examples';
         else if (currentWordCount >= estimatedWordTarget * 0.15) aiStage = 'writing';
         
-        // Update status in real-time
         this.updateGenerationStatus(book.id, {
           currentModule: {
             id: roadmapModule.id,
             title: roadmapModule.title,
             attempt: attemptNumber,
             progress,
-            generatedText: currentText.slice(-800) // Show last 800 chars for performance
+            generatedText: currentText.slice(-800)
           },
           totalProgress: 0,
           status: 'generating',
-          totalWordsGenerated: totalWordsBefore + currentWordCount, // REAL-TIME UPDATE
+          totalWordsGenerated: totalWordsBefore + currentWordCount,
           aiStage
         });
       });
 
-      const generationDuration = Date.now() - generationStartTime;
-      
       const wordCount = moduleContent.split(/\s+/).filter(word => word.length > 0).length;
 
       if (wordCount < 300) {
-        logger.warn(`Generated content too short for ${roadmapModule.title}`, {
-          wordCount,
-          minimumRequired: 300
-        }, 'ModuleGeneration');
-        throw new Error(`Generated content too short (${wordCount} words). Minimum 300 words required.`);
+        throw new Error(`Generated content too short (${wordCount} words)`);
       }
 
       const module: BookModule = {
@@ -976,15 +751,6 @@ Return ONLY valid JSON:
         generatedAt: new Date()
       };
 
-      logger.info('Module generation successful', {
-        moduleId: module.id,
-        moduleTitle: module.title,
-        wordCount: module.wordCount,
-        duration: generationDuration,
-        attempt: attemptNumber
-      }, 'ModuleGeneration');
-
-      // Clear generated text on completion
       this.currentGeneratedTexts.delete(book.id);
 
       this.updateGenerationStatus(book.id, {
@@ -993,11 +759,10 @@ Return ONLY valid JSON:
           title: roadmapModule.title,
           attempt: attemptNumber,
           progress: 100
-          // No generatedText = hide streaming box
         },
         totalProgress: 0,
         status: 'generating',
-        logMessage: `✓ Completed: ${roadmapModule.title} (${wordCount} words in ${Math.round(generationDuration / 1000)}s)`,
+        logMessage: `✓ Completed: ${roadmapModule.title}`,
         totalWordsGenerated: totalWordsBefore + wordCount,
         aiStage: 'complete'
       });
@@ -1006,41 +771,17 @@ Return ONLY valid JSON:
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       
-      logger.error('Module generation failed', {
-        moduleTitle: roadmapModule.title,
-        attempt: attemptNumber,
-        error: errorMessage,
-      }, 'ModuleGeneration');
-
       if (this.shouldRetry(error, attemptNumber)) {
         const isRateLimit = this.isRateLimitError(error);
         const delay = this.calculateRetryDelay(attemptNumber, isRateLimit);
-        
-        logger.warn(`Retrying module generation after ${Math.round(delay / 1000)}s`, {
-          module: roadmapModule.title,
-          attempt: attemptNumber + 1,
-          maxAttempts: this.MAX_MODULE_RETRIES
-        }, 'ModuleGeneration');
-        
-        this.updateGenerationStatus(book.id, {
-          currentModule: {
-            id: roadmapModule.id,
-            title: roadmapModule.title,
-            attempt: attemptNumber,
-            progress: 0
-          },
-          totalProgress: 0,
-          status: 'generating',
-          logMessage: `⚠️ Retry in ${Math.round(delay / 1000)}s: ${roadmapModule.title}`
-        });
         
         await sleep(delay);
         return this.generateModuleContentWithRetry(book, roadmapModule, session, attemptNumber + 1);
       }
 
       this.updateGenerationStatus(book.id, {
-          status: 'error',
-          logMessage: `✗ Failed: ${roadmapModule.title} after all retries.`
+        status: 'error',
+        logMessage: `✗ Failed: ${roadmapModule.title}`
       });
 
       return {
@@ -1095,32 +836,53 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
 ### Key Takeaways`;
   }
 
-  // BULK MODULE GENERATION WITH RECOVERY (unchanged - uses the streaming generateModuleContentWithRetry)
+  // ============================================================================
+  // FIXED BULK GENERATION WITH CHECKPOINT RECOVERY
+  // ============================================================================
   async generateAllModulesWithRecovery(book: BookProject, session: BookSession): Promise<void> {
     if (!book.roadmap) {
-      throw new Error('No roadmap available for module generation');
+      throw new Error('No roadmap available');
     }
 
-    logger.info('Starting bulk module generation with recovery', { 
+    logger.info('🔄 Starting bulk generation with recovery', { 
       bookId: book.id,
-      totalModules: book.roadmap.modules.length,
-      hasCheckpoint: this.hasCheckpoint(book.id)
+      totalModules: book.roadmap.modules.length
     }, 'BulkGeneration');
     
-    this.updateProgress(book.id, { status: 'generating_content', progress: 15 });
-
+    // CRITICAL: Load checkpoint first
     const checkpoint = this.loadCheckpoint(book.id);
-    const completedModules = [...book.modules.filter(m => m.status === 'completed')];
-    const completedModuleIds = new Set(
-      checkpoint?.completedModuleIds || completedModules.map(m => m.roadmapModuleId)
-    );
-    const failedModuleIds = new Set<string>(checkpoint?.failedModuleIds || []);
+    
+    let completedModules = [...book.modules.filter(m => m.status === 'completed')];
+    const completedModuleIds = new Set<string>();
+    const failedModuleIds = new Set<string>();
+
+    if (checkpoint) {
+      logger.info('📦 Checkpoint found - recovering', {
+        checkpointCompleted: checkpoint.completedModuleIds.length,
+        checkpointFailed: checkpoint.failedModuleIds.length
+      }, 'BulkGeneration');
+
+      checkpoint.completedModuleIds.forEach(id => completedModuleIds.add(id));
+      checkpoint.failedModuleIds.forEach(id => failedModuleIds.add(id));
+
+      completedModules.forEach(m => {
+        if (m.roadmapModuleId) {
+          completedModuleIds.add(m.roadmapModuleId);
+        }
+      });
+    } else {
+      completedModules.forEach(m => {
+        if (m.roadmapModuleId) {
+          completedModuleIds.add(m.roadmapModuleId);
+        }
+      });
+    }
 
     const modulesToGenerate = book.roadmap.modules.filter(
       roadmapModule => !completedModuleIds.has(roadmapModule.id)
     );
 
-    logger.info('Module generation plan', {
+    logger.info('📊 Generation plan', {
       total: book.roadmap.modules.length,
       alreadyCompleted: completedModuleIds.size,
       remaining: modulesToGenerate.length,
@@ -1128,23 +890,27 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
     }, 'BulkGeneration');
 
     if (modulesToGenerate.length === 0) {
-      logger.info('All modules already completed, skipping generation', {}, 'BulkGeneration');
-      this.updateProgress(book.id, { status: 'roadmap_completed', progress: 90 });
+      logger.info('✅ All modules completed', {}, 'BulkGeneration');
+      this.updateProgress(book.id, { 
+        status: 'roadmap_completed', 
+        progress: 90,
+        modules: completedModules
+      });
       return;
     }
+
+    this.updateProgress(book.id, { status: 'generating_content', progress: 15 });
 
     const batchStartTime = Date.now();
 
     for (let i = 0; i < modulesToGenerate.length; i++) {
       const roadmapModule = modulesToGenerate[i];
       
-      logger.info(`Processing module ${i + 1}/${modulesToGenerate.length}`, {
+      logger.info(`📝 Processing module ${i + 1}/${modulesToGenerate.length}`, {
         moduleId: roadmapModule.id,
-        moduleTitle: roadmapModule.title,
-        order: roadmapModule.order
+        moduleTitle: roadmapModule.title
       }, 'BulkGeneration');
 
-      // Clear previous generated text
       this.clearCurrentGeneratedText(book.id);
 
       try {
@@ -1159,6 +925,7 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
           completedModuleIds.add(roadmapModule.id);
           failedModuleIds.delete(roadmapModule.id);
           
+          // Save checkpoint immediately
           this.saveCheckpoint(
             book.id,
             Array.from(completedModuleIds),
@@ -1173,11 +940,9 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
             progress: Math.min(85, progress)
           });
 
-          logger.info('Module checkpoint saved', {
+          logger.info('✅ Module checkpoint saved', {
             moduleTitle: roadmapModule.title,
-            completedCount: completedModules.length,
-            totalCount: book.roadmap.modules.length,
-            progress: Math.round(progress)
+            completedCount: completedModules.length
           }, 'BulkGeneration');
         } else {
           failedModuleIds.add(roadmapModule.id);
@@ -1189,11 +954,6 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
             i
           );
 
-          logger.warn('Module marked as failed in checkpoint', {
-            moduleTitle: roadmapModule.title,
-            error: newModule.error
-          }, 'BulkGeneration');
-
           completedModules.push(newModule);
           this.updateProgress(book.id, { modules: [...completedModules] });
         }
@@ -1204,11 +964,7 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.error('Unexpected error during module generation', {
-          moduleTitle: roadmapModule.title,
-          error: errorMessage
-        }, 'BulkGeneration');
-
+        
         failedModuleIds.add(roadmapModule.id);
         this.saveCheckpoint(
           book.id,
@@ -1239,26 +995,12 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
       const failedCount = completedModules.filter(m => m.status === 'error').length;
       const successCount = completedModules.filter(m => m.status === 'completed').length;
       
-      logger.warn('Bulk generation completed with failures', {
-        totalModules: book.roadmap.modules.length,
-        successful: successCount,
-        failed: failedCount,
-        duration: batchDuration,
-        averageTimePerModule: Math.round(batchDuration / modulesToGenerate.length)
-      }, 'BulkGeneration');
-
       this.updateProgress(book.id, {
         status: 'error',
-        error: `Generation completed with ${failedCount} failed module(s). Successfully generated ${successCount} modules. You can retry failed modules or continue to assembly.`,
+        error: `Generation completed with ${failedCount} failed module(s)`,
         modules: completedModules
       });
     } else {
-      logger.info('Bulk generation completed successfully', {
-        totalModules: book.roadmap.modules.length,
-        totalDuration: batchDuration,
-        averageTimePerModule: Math.round(batchDuration / modulesToGenerate.length)
-      }, 'BulkGeneration');
-      
       this.clearCheckpoint(book.id);
       this.updateProgress(book.id, {
         status: 'roadmap_completed',
@@ -1268,7 +1010,7 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
     }
   }
 
-  // RETRY FAILED MODULES (unchanged - uses streaming)
+  // RETRY FAILED MODULES
   async retryFailedModules(book: BookProject, session: BookSession): Promise<void> {
     if (!book.roadmap) {
       throw new Error('No roadmap available');
@@ -1277,12 +1019,9 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
     const failedModules = book.modules.filter(m => m.status === 'error');
     
     if (failedModules.length === 0) {
-      logger.info('No failed modules to retry', {}, 'RetryFailedModules');
       return;
     }
 
-    logger.info('Retrying failed modules', { count: failedModules.length }, 'RetryFailedModules');
-    
     const completedModules = book.modules.filter(m => m.status === 'completed');
     const updatedModules = [...completedModules];
 
@@ -1291,12 +1030,7 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
         rm => rm.id === failedModule.roadmapModuleId
       );
 
-      if (!roadmapModule) {
-        logger.warn('Roadmap module not found for failed module', {
-          failedModuleId: failedModule.id
-        }, 'RetryFailedModules');
-        continue;
-      }
+      if (!roadmapModule) continue;
 
       try {
         const newModule = await this.generateModuleContentWithRetry(
@@ -1305,26 +1039,12 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
           session
         );
 
-        if (newModule.status === 'completed') {
-          updatedModules.push(newModule);
-          logger.info('Failed module successfully regenerated', {
-            title: roadmapModule.title
-          }, 'RetryFailedModules');
-        } else {
-          updatedModules.push(newModule);
-          logger.warn('Module still failed after retry', {
-            title: roadmapModule.title
-          }, 'RetryFailedModules');
-        }
-
+        updatedModules.push(newModule);
         this.updateProgress(book.id, { modules: [...updatedModules] });
         await sleep(1000);
 
       } catch (error) {
-        logger.error('Error retrying failed module', {
-          module: roadmapModule.title,
-          error
-        }, 'RetryFailedModules');
+        // Continue with next module
       }
     }
 
@@ -1340,13 +1060,13 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
     } else {
       this.updateProgress(book.id, {
         status: 'error',
-        error: `${stillFailed} module(s) still failed after retry`,
+        error: `${stillFailed} module(s) still failed`,
         modules: updatedModules
       });
     }
   }
 
-  // ASSEMBLE FINAL BOOK (unchanged - doesn't need streaming for intro/summary)
+  // ASSEMBLE FINAL BOOK
   async assembleFinalBook(book: BookProject, session: BookSession): Promise<void> {
     logger.info('Starting book assembly', { bookId: book.id }, 'BookAssembly');
     this.updateProgress(book.id, { status: 'assembling', progress: 90 });
@@ -1377,11 +1097,6 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
         `## Glossary\n\n${glossary}`
       ].join('');
 
-      logger.info('Book assembly completed', {
-        totalWords,
-        totalModules: book.modules.length
-      }, 'BookAssembly');
-
       this.clearCheckpoint(book.id);
       this.updateProgress(book.id, {
         status: 'completed',
@@ -1390,7 +1105,6 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
         totalWords
       });
     } catch (error) {
-      logger.error('Book assembly failed', { error }, 'BookAssembly');
       throw error;
     }
   }
@@ -1464,7 +1178,7 @@ Format:
 
   downloadAsMarkdown(project: BookProject): void {
     if (!project.finalBook) {
-      throw new Error('No book content available for download');
+      throw new Error('No book content available');
     }
 
     const blob = new Blob([project.finalBook], { type: 'text/markdown;charset=utf-8' });
