@@ -1,4 +1,4 @@
-// src/components/Sidebar.tsx
+// src/components/Sidebar.tsx - COMPLETE FILE WITH FIXED BOOK TITLES
 import React, { useState, useMemo } from 'react';
 import {
   Settings, Trash2, X, ChevronLeft, ChevronRight, Search, Plus,
@@ -382,25 +382,32 @@ export function Sidebar({
                   key={book.id}
                   onClick={() => onSelectBook(book.id)}
                   className={`group flex items-center w-full rounded-lg cursor-pointer transition-all duration-200 ${
-                    isFolded ? 'justify-center p-2.5' : 'gap-3 p-2.5'
+                    isFolded ? 'justify-center p-2.5' : 'gap-2.5 p-2.5'
                   } ${
                     isSelected
                       ? 'bg-white text-black font-semibold'
                       : 'text-gray-300 hover:bg-white/5 hover:text-white'
                   }`}
-                  title={isFolded ? book.title : undefined}
+                  title={book.title}
                 >
                   <CategoryIcon className={`w-4 h-4 shrink-0 transition-colors ${
                     isSelected ? 'text-black' : 'text-gray-400'
                   }`} />
-                  <span className={`text-sm font-medium truncate transition-all duration-300 ease-in-out ${
-                    isFolded ? 'opacity-0 scale-0 w-0' : 'opacity-100 scale-100 flex-1'
-                  }`}>
+                  <span className={`text-sm font-medium transition-all duration-300 ease-in-out leading-tight ${
+                    isFolded ? 'opacity-0 scale-0 w-0' : 'opacity-100 scale-100 flex-1 min-w-0'
+                  }`}
+                  style={{
+                    display: isFolded ? 'none' : '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    wordBreak: 'break-word'
+                  }}>
                     {!isFolded && book.title}
                   </span>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDeleteBook(book.id); }}
-                    className={`p-1.5 rounded-md transition-all duration-200 ${
+                    className={`p-1.5 rounded-md transition-all duration-200 shrink-0 ${
                       isFolded
                         ? 'opacity-0 scale-0 w-0'
                         : 'opacity-0 group-hover:opacity-100 scale-100'
