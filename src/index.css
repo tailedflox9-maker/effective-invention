@@ -549,3 +549,45 @@
   background: rgba(59, 130, 246, 0.05);
   border-left-color: #3B82F6;
 }
+
+/* ==========================================================================
+   Streaming UI Enhancements (NEW)
+   ========================================================================== */
+
+/* Smooth auto-scroll for streaming content */
+.streaming-text-box {
+  scroll-behavior: smooth;
+  overflow-anchor: auto;
+}
+
+/* Custom scrollbar for streaming box */
+.streaming-text-box::-webkit-scrollbar {
+  width: 4px;
+}
+
+.streaming-text-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.streaming-text-box::-webkit-scrollbar-thumb {
+  background-color: rgba(59, 130, 246, 0.4);
+  border-radius: 2px;
+}
+
+.streaming-text-box::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(59, 130, 246, 0.6);
+}
+
+/* Animate word counter during streaming */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+  }
+}
+
+.word-counter-streaming {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
