@@ -9,7 +9,7 @@ import {
   Loader2, Target, Users, Brain, Sparkles,
   BarChart3, ListChecks, Play, Box, ArrowLeft, Check, BookText, RefreshCw, Edit, Save, X,
   FileText, Maximize2, Minimize2,
-  List, Settings, Moon, ZoomIn, ZoomOut, BookOpen, 
+  List, Settings, Moon, ZoomIn, ZoomOut, BookOpen,
   ChevronUp, RotateCcw, Palette, Hash, Activity, TrendingUp, Zap, Gauge,
   Terminal, Eye, EyeOff, Search
 } from 'lucide-react';
@@ -34,7 +34,7 @@ interface GenerationStatus {
   status: 'idle' | 'generating' | 'completed' | 'error';
   logMessage?: string;
   totalWordsGenerated?: number;
-  aiStage?: 'analyzing' | 'writing' | 'examples' | 'polishing' | 'complete'; // NEW
+  aiStage?: 'analyzing' | 'writing' | 'examples' | 'polishing' | 'complete';
 }
 
 interface GenerationStats {
@@ -71,53 +71,52 @@ interface BookViewProps {
 // ============================================================================
 // NEW: Animated Word Counter Component
 // ============================================================================
-function AnimatedWordCounter({ 
-  targetCount, 
-  duration = 1000,
-  label = "Total Words"
-}: { 
-  targetCount: number; 
+function AnimatedWordCounter({
+  targetCount,
+  duration = 500,
+  label = "Total Words",
+  isStreaming = false
+}: {
+  targetCount: number;
   duration?: number;
   label?: string;
+  isStreaming?: boolean;
 }) {
   const [displayCount, setDisplayCount] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
-    if (targetCount === displayCount) return;
-    
-    setIsAnimating(true);
-    const startCount = displayCount;
-    const difference = targetCount - startCount;
-    const startTime = Date.now();
-    
-    const animateCount = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Easing function for smooth animation
-      const easeOutQuart = 1 - Math.pow(1 - progress, 4);
-      const currentCount = Math.floor(startCount + (difference * easeOutQuart));
-      
-      setDisplayCount(currentCount);
-      
-      if (progress < 1) {
-        requestAnimationFrame(animateCount);
-      } else {
-        setDisplayCount(targetCount);
-        setIsAnimating(false);
-      }
-    };
-    
-    requestAnimationFrame(animateCount);
-  }, [targetCount, duration, displayCount]);
+    if (isStreaming) {
+      // Instant update during streaming
+      setDisplayCount(targetCount);
+    } else {
+      // Smooth animation when completed
+      const startCount = displayCount;
+      const difference = targetCount - startCount;
+      const startTime = Date.now();
+
+      const animateCount = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+        const currentCount = Math.floor(startCount + (difference * easeOutQuart));
+
+        setDisplayCount(currentCount);
+
+        if (progress < 1) {
+          requestAnimationFrame(animateCount);
+        } else {
+          setDisplayCount(targetCount);
+        }
+      };
+
+      requestAnimationFrame(animateCount);
+    }
+  }, [targetCount, duration, isStreaming]);
 
   return (
     <div className="relative bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-3 border border-blue-500/20">
       <div className="flex items-center gap-2">
-        <div className={`w-8 h-8 flex items-center justify-center bg-blue-500/20 rounded-lg ${
-          isAnimating ? 'animate-pulse' : ''
-        }`}>
+        <div className={`w-8 h-8 flex items-center justify-center bg-blue-500/20 rounded-lg ${isStreaming ? 'animate-pulse' : ''}`}>
           <Hash className="w-4 h-4 text-blue-400" />
         </div>
         <div className="flex-1 min-w-0">
@@ -125,22 +124,20 @@ function AnimatedWordCounter({
             {label}
           </div>
           <div className="flex items-baseline gap-1.5 mt-0.5">
-            <span className={`text-xl font-bold font-mono bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent transition-all duration-300 ${
-              isAnimating ? 'scale-110' : 'scale-100'
-            }`}>
+            <span className={`text-xl font-bold font-mono bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent transition-all duration-300 ${isStreaming ? 'scale-110' : 'scale-100'}`}>
               {displayCount.toLocaleString()}
             </span>
-            {isAnimating && (
+            {isStreaming && (
               <TrendingUp className="w-3 h-3 text-green-400 animate-bounce" />
             )}
           </div>
         </div>
       </div>
-      
-      {isAnimating && (
+
+      {isStreaming && (
         <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/10 to-transparent" 
-               style={{ 
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/10 to-transparent"
+               style={{
                  backgroundSize: '200% 100%',
                  animation: 'shimmer 2s infinite'
                }} />
@@ -202,20 +199,15 @@ const stageConfig: Record<AIThinkingStage, {
 function AIThinkingIndicator({ stage, progress = 0 }: { stage: AIThinkingStage; progress?: number }) {
   const config = stageConfig[stage];
   const Icon = config.icon;
-
   return (
     <div className={`relative rounded-lg border ${config.borderColor} ${config.bgColor} p-3 overflow-hidden`}>
       <div className="flex items-center gap-2.5 relative z-10">
-        <div className={`w-8 h-8 flex items-center justify-center rounded-lg ${config.bgColor} ${
-          stage !== 'complete' ? 'animate-pulse' : ''
-        }`}>
-          <Icon className={`w-4 h-4 ${config.color} ${
-            stage !== 'complete' ? 'animate-spin' : ''
-          }`} style={{
+        <div className={`w-8 h-8 flex items-center justify-center rounded-lg ${config.bgColor} ${stage !== 'complete' ? 'animate-pulse' : ''}`}>
+          <Icon className={`w-4 h-4 ${config.color} ${stage !== 'complete' ? 'animate-spin' : ''}`} style={{
             animationDuration: stage === 'analyzing' ? '3s' : stage === 'writing' ? '2s' : '1.5s'
           }} />
         </div>
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className={`text-xs font-medium ${config.color}`}>
@@ -223,21 +215,18 @@ function AIThinkingIndicator({ stage, progress = 0 }: { stage: AIThinkingStage; 
             </span>
             {stage !== 'complete' && (
               <div className="flex gap-0.5">
-                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" 
-                      style={{ animationDelay: '0ms' }} />
-                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" 
-                      style={{ animationDelay: '150ms' }} />
-                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" 
-                      style={{ animationDelay: '300ms' }} />
+                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1 h-1 rounded-full bg-current opacity-100 animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             )}
           </div>
-          
+
           {progress > 0 && (
             <div className="w-full bg-black/30 rounded-full h-1 overflow-hidden mt-1.5">
-              <div 
+              <div
                 className={`h-full rounded-full transition-all duration-500 ${config.bgColor.replace('/10', '/40')}`}
-                style={{ 
+                style={{
                   width: `${progress}%`,
                   boxShadow: `0 0 8px ${config.color.replace('text-', '').replace('-400', '')}`
                 }}
@@ -245,30 +234,30 @@ function AIThinkingIndicator({ stage, progress = 0 }: { stage: AIThinkingStage; 
             </div>
           )}
         </div>
+
+        {stage !== 'complete' && (
+          <div className="absolute inset-0 pointer-events-none">
+            <div
+              className="absolute inset-0 opacity-20"
+              style={{
+                background: `linear-gradient(90deg, transparent, ${config.color.replace('text-', 'rgba(').replace('-400', ', 0.1)')}, transparent)`,
+                backgroundSize: '200% 100%',
+                animation: 'shimmer 2s infinite'
+              }}
+            />
+          </div>
+        )}
       </div>
-      
-      {stage !== 'complete' && (
-        <div className="absolute inset-0 pointer-events-none">
-          <div 
-            className="absolute inset-0 opacity-20"
-            style={{
-              background: `linear-gradient(90deg, transparent, ${config.color.replace('text-', 'rgba(').replace('-400', ', 0.1)')}, transparent)`,
-              backgroundSize: '200% 100%',
-              animation: 'shimmer 2s infinite'
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }
 
 // Embedded Progress Panel Component with NEW FEATURES
-const EmbeddedProgressPanel = ({ 
-  generationStatus, 
-  stats, 
-  onCancel 
-}: { 
+const EmbeddedProgressPanel = ({
+  generationStatus,
+  stats,
+  onCancel
+}: {
   generationStatus: GenerationStatus;
   stats: GenerationStats;
   onCancel?: () => void;
@@ -276,18 +265,7 @@ const EmbeddedProgressPanel = ({
   const [eventLog, setEventLog] = useState(() => logger.getLogs());
   const [showEventLog, setShowEventLog] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
-
-  // NEW: Determine AI stage based on progress
-  const currentAIStage: AIThinkingStage = useMemo(() => {
-    if (!generationStatus.currentModule) return 'analyzing';
-    const progress = generationStatus.currentModule.progress;
-    
-    if (progress >= 95) return 'complete';
-    if (progress >= 70) return 'polishing';
-    if (progress >= 40) return 'examples';
-    if (progress >= 10) return 'writing';
-    return 'analyzing';
-  }, [generationStatus.currentModule?.progress]);
+  const streamBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsubscribe = logger.subscribe(setEventLog);
@@ -296,9 +274,15 @@ const EmbeddedProgressPanel = ({
 
   useEffect(() => {
     if (showEventLog && logContainerRef.current) {
-        logContainerRef.current.scrollTop = 0;
+      logContainerRef.current.scrollTop = 0;
     }
   }, [eventLog, showEventLog]);
+
+  useEffect(() => {
+    if (streamBoxRef.current && generationStatus.currentModule?.generatedText) {
+      streamBoxRef.current.scrollTop = streamBoxRef.current.scrollHeight;
+    }
+  }, [generationStatus.currentModule?.generatedText]);
 
   const handleDownloadLogs = () => {
     const logsContent = logger.exportLogs();
@@ -340,7 +324,7 @@ const EmbeddedProgressPanel = ({
             </div>
           </div>
           {onCancel && (
-            <button 
+            <button
               onClick={onCancel}
               className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
             >
@@ -349,27 +333,33 @@ const EmbeddedProgressPanel = ({
           )}
         </div>
 
-        {/* Overall Progress Bar */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
-            <span>Overall Progress</span>
-            <span className="font-mono font-bold text-white">{Math.round(overallProgress)}%</span>
-          </div>
-          <div className="w-full bg-gray-800/50 rounded-full h-3 overflow-hidden border border-gray-700">
-            <div 
-              className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative"
-              style={{ width: `${overallProgress}%` }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
-            </div>
+      {/* Overall Progress Bar */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+          <span>Overall Progress</span>
+          <span className="font-mono font-bold text-white">{Math.round(overallProgress)}%</span>
+        </div>
+        <div className="w-full bg-gray-800/50 rounded-full h-3 overflow-hidden border border-gray-700">
+          <div
+            className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative"
+            style={{ width: `${overallProgress}%` }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
           </div>
         </div>
       </div>
 
       {/* NEW: AI Thinking Indicator */}
       {generationStatus.currentModule && (
-        <AIThinkingIndicator 
-          stage={currentAIStage}
+        <AIThinkingIndicator
+          stage={
+            generationStatus.currentModule.progress >= 100 ? 'complete' :
+            generationStatus.currentModule.progress >= 95 ? 'polishing' :
+            generationStatus.currentModule.progress >= 70 ? 'examples' :
+            generationStatus.currentModule.progress >= 40 ? 'writing' :
+            generationStatus.currentModule.progress >= 10 ? 'analyzing' :
+            'analyzing'
+          }
           progress={generationStatus.currentModule.progress}
         />
       )}
@@ -389,9 +379,12 @@ const EmbeddedProgressPanel = ({
               </div>
             )}
           </div>
-          
+
           {generationStatus.currentModule.generatedText && (
-            <div className="bg-[var(--color-bg)] rounded-lg p-3 max-h-32 overflow-y-auto border border-[var(--color-border)] text-xs text-gray-300 leading-relaxed font-mono">
+            <div
+              ref={streamBoxRef}
+              className="bg-[var(--color-bg)] rounded-lg p-3 max-h-24 overflow-y-auto border border-[var(--color-border)] text-xs text-gray-300 leading-relaxed font-mono scroll-smooth"
+            >
               <Zap className="w-3 h-3 text-yellow-400 inline-block mr-2" />
               {generationStatus.currentModule.generatedText}
               <span className="inline-block w-1.5 h-3 bg-blue-400 animate-pulse ml-1"></span>
@@ -409,7 +402,7 @@ const EmbeddedProgressPanel = ({
           </div>
           <div className="text-xl font-bold text-white font-mono">{stats.completedModules}</div>
         </div>
-        
+
         <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <X className="w-4 h-4 text-red-400" />
@@ -417,14 +410,15 @@ const EmbeddedProgressPanel = ({
           </div>
           <div className="text-xl font-bold text-white font-mono">{stats.failedModules}</div>
         </div>
-        
+
         {/* NEW: Animated Word Counter */}
-        <AnimatedWordCounter 
+        <AnimatedWordCounter
           targetCount={stats.totalWordsGenerated}
-          duration={800}
+          duration={300}
           label="Words"
+          isStreaming={generationStatus.status === 'generating'}
         />
-        
+
         <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <Gauge className="w-4 h-4 text-purple-400" />
@@ -432,7 +426,7 @@ const EmbeddedProgressPanel = ({
           </div>
           <div className="text-xl font-bold text-white font-mono">{stats.wordsPerMinute.toFixed(0)}</div>
         </div>
-        
+
         <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <Clock className="w-4 h-4 text-orange-400" />
@@ -440,7 +434,7 @@ const EmbeddedProgressPanel = ({
           </div>
           <div className="text-lg font-bold text-white font-mono">{formatTime(stats.averageTimePerModule)}</div>
         </div>
-        
+
         <div className="bg-black/20 rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-cyan-400" />
@@ -474,7 +468,7 @@ const EmbeddedProgressPanel = ({
                 </button>
             </div>
         </div>
-        
+
         {showEventLog && (
             <div ref={logContainerRef} className="max-h-[180px] overflow-y-auto space-y-2 text-xs font-mono bg-[var(--color-bg)] p-2 rounded-md border border-[var(--color-border)]">
                 {eventLog.length === 0 ? (
@@ -484,8 +478,7 @@ const EmbeddedProgressPanel = ({
                         <div key={log.id} className="flex gap-2 items-start">
                             <span className="text-gray-500 shrink-0">{log.timestamp}</span>
                             <span className={`${
-                                log.type === 'success' ? 'text-green-400' : 
-                                log.type === 'warn' ? 'text-yellow-400' :
+                                log.type === 'success' ? 'text-green-400' :  log.type === 'warn' ? 'text-yellow-400' :
                                 log.type === 'error' ? 'text-red-400' :
                                 'text-gray-300'
                             }`}>
@@ -496,7 +489,7 @@ const EmbeddedProgressPanel = ({
                 )}
             </div>
         )}
-        
+
         {!showEventLog && generationStatus.logMessage && (
             <div className="text-xs text-gray-400 font-mono truncate">
                 {generationStatus.logMessage}
@@ -590,7 +583,6 @@ const BookListGrid = ({
     const animateClass = ['generating_roadmap', 'generating_content', 'assembling'].includes(status) ? 'animate-spin' : '';
     return <Icon className={`w-5 h-5 ${colorClass} ${animateClass}`} />;
   };
-
   const getStatusText = (status: BookProject['status']) => ({
     planning: 'Planning',
     generating_roadmap: 'Creating Roadmap',
@@ -600,7 +592,6 @@ const BookListGrid = ({
     completed: 'Completed',
     error: 'Error',
   }[status] || 'Unknown');
-
   return (
     <div className="flex-1 flex flex-col h-full">
       <div className="p-6 border-b border-[var(--color-border)]">
@@ -760,7 +751,6 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
   const [showScrollTop, setShowScrollTop] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const settingsTimeoutRef = useRef<NodeJS.Timeout>();
-
   const [settings, setSettings] = useState<ReadingSettings>(() => {
     const saved = localStorage.getItem('pustakam-reading-settings');
     const parsed = saved ? JSON.parse(saved) : {};
@@ -843,6 +833,7 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
 
   const currentTheme = THEMES[settings.theme];
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
   const updateSetting = <K extends keyof ReadingSettings>(key: K, value: ReadingSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
     if (settingsTimeoutRef.current) clearTimeout(settingsTimeoutRef.current);
@@ -922,7 +913,7 @@ const ReadingMode: React.FC<ReadingModeProps> = ({
                 <BookOpen size={16} />
                 Reading Settings
               </h4>
-              
+
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Font Size</label>
                 <div className="flex items-center gap-2">
@@ -1401,7 +1392,7 @@ export function BookView({
                           </p>
                         </div>
                       </div>
-                      
+
                       <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
                           <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
@@ -1416,7 +1407,6 @@ export function BookView({
                           </div>
                         </div>
                       </div>
-
                       <button
                         onClick={handleStartGeneration}
                         disabled={isGenerating}
@@ -1450,7 +1440,7 @@ export function BookView({
                             {failedModules.length} module(s) failed to generate.
                             You can retry just the failed modules or continue with what's available.
                           </p>
-                          
+
                           <div className="bg-black/20 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
                             <h4 className="text-sm font-semibold text-yellow-300 mb-2">Failed Modules:</h4>
                             <ul className="space-y-2">
@@ -1467,7 +1457,6 @@ export function BookView({
                               ))}
                             </ul>
                           </div>
-
                           <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-3 mb-4">
                             <div className="flex items-center gap-2 text-green-400">
                               <Check className="w-5 h-5" />
@@ -1476,7 +1465,6 @@ export function BookView({
                               </span>
                             </div>
                           </div>
-
                           <div className="flex flex-col sm:flex-row gap-3">
                             <button
                               onClick={() => onRetryFailedModules(currentBook, {
@@ -1501,7 +1489,7 @@ export function BookView({
                                 </>
                               )}
                             </button>
-                            
+
                             {completedModules.length >= (currentBook.roadmap?.modules.length || 0) * 0.6 && (
                               <button
                                 onClick={handleStartAssembly}
@@ -1513,7 +1501,6 @@ export function BookView({
                               </button>
                             )}
                           </div>
-
                           <p className="text-xs text-gray-500 mt-3">
                             💡 Tip: If retries keep failing, try switching to a different AI model in the sidebar.
                           </p>
@@ -1602,17 +1589,16 @@ export function BookView({
                         <ListChecks className="w-5 h-5 text-purple-400" />
                         <h3 className="text-xl font-bold">Learning Roadmap</h3>
                       </div>
-
                       <div className="space-y-4">
                         {currentBook.roadmap.modules.map((module, index) => {
                           const completedModule = currentBook.modules.find(m => m.roadmapModuleId === module.id);
                           const isActive = generationStatus?.currentModule?.id === module.id;
-                          
+
                           return (
-                            <div 
+                            <div
                               key={module.id}
                               className={`flex items-start gap-3 p-4 rounded-lg border transition-all ${
-                                isActive 
+                                isActive
                                   ? 'border-blue-500/50 bg-blue-500/5 shadow-lg'
                                   : completedModule?.status === 'completed'
                                   ? 'border-green-500/30 bg-green-500/5'
@@ -1640,7 +1626,6 @@ export function BookView({
                                   index + 1
                                 )}
                               </div>
-
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-semibold text-white mb-1">{module.title}</h4>
                                 <p className="text-sm text-gray-400 mb-2">
@@ -1663,7 +1648,6 @@ export function BookView({
                                   )}
                                 </div>
                               </div>
-
                               {isActive && (
                                 <div className="text-blue-400 text-xs font-medium bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
                                   Generating...
