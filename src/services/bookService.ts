@@ -1,4 +1,4 @@
-// src/services/bookService.ts - FIXED STREAMING VERSION
+// src/services/bookService.ts - REAL SSE STREAMING VERSION
 import { BookProject, BookRoadmap, BookModule, RoadmapModule, BookSession } from '../types/book';
 import { APISettings, ModelProvider } from '../types';
 import { generateId } from '../utils/helpers';
@@ -6,7 +6,6 @@ import { logger } from '../utils/logger';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Enhanced checkpoint with more metadata
 interface GenerationCheckpoint {
   bookId: string;
   completedModuleIds: string[];
@@ -16,7 +15,6 @@ interface GenerationCheckpoint {
   timestamp: Date;
 }
 
-// Real-time generation status
 export interface GenerationStatus {
   currentModule?: {
     id: string;
@@ -89,7 +87,7 @@ class BookGenerationService {
     this.currentGeneratedTexts.delete(bookId);
   }
 
-  // CHECKPOINT METHODS
+  // CHECKPOINT METHODS (unchanged)
   private saveCheckpoint(
     bookId: string, 
     completedModuleIds: string[], 
@@ -149,7 +147,7 @@ class BookGenerationService {
     }
   }
 
-  // VALIDATION METHODS
+  // VALIDATION METHODS (unchanged)
   validateSettings(): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
     if (!this.settings.selectedProvider) errors.push('No AI provider selected');
@@ -176,7 +174,7 @@ class BookGenerationService {
     return key;
   }
 
-  // ERROR HANDLING METHODS
+  // ERROR HANDLING METHODS (unchanged)
   private isRateLimitError(error: any): boolean {
     const errorMessage = error?.message?.toLowerCase() || '';
     const statusCode = error?.status || error?.response?.status;
@@ -274,7 +272,9 @@ class BookGenerationService {
     }
   }
 
-  // GOOGLE AI GENERATION - FIXED STREAMING
+  // ============================================================================
+  // REAL SSE STREAMING - GOOGLE GEMINI
+  // ============================================================================
   private async generateWithGoogle(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
@@ -282,11 +282,11 @@ class BookGenerationService {
     let attempt = 0;
     const startTime = Date.now();
 
-    logger.api('Initiating Google AI request', {
+    logger.api('Initiating Google AI streaming request', {
       provider: 'Google Gemini',
       model,
       promptLength: prompt.length,
-      prompt: prompt,
+      streaming: !!onChunk,
       attempt: 1
     }, 'GoogleAI');
 
@@ -294,18 +294,23 @@ class BookGenerationService {
       try {
         const requestStartTime = Date.now();
         
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 8192 }
-            }),
-            signal
-          }
-        );
+        // Use streaming endpoint
+        const streamEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
+        
+        const response = await fetch(streamEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { 
+              temperature: 0.7, 
+              topK: 40, 
+              topP: 0.95, 
+              maxOutputTokens: 8192 
+            }
+          }),
+          signal
+        });
 
         const requestDuration = Date.now() - requestStartTime;
 
@@ -325,7 +330,7 @@ class BookGenerationService {
           const errorData = await response.json().catch(() => ({}));
           const error = new Error(errorData?.error?.message || `HTTP ${response.status}`);
           (error as any).status = response.status;
-          logger.error(`Google AI request failed`, {
+          logger.error(`Google AI streaming request failed`, {
             statusCode: response.status,
             error: errorData?.error?.message,
             duration: requestDuration
@@ -333,32 +338,82 @@ class BookGenerationService {
           throw error;
         }
 
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error('Invalid response from Google API');
-        
+        // REAL STREAMING IMPLEMENTATION
+        if (!response.body) {
+          throw new Error('Response body is null - streaming not supported');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+        let buffer = '';
+
+        logger.debug('Starting stream processing', {}, 'GoogleAI');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            logger.debug('Stream completed', { totalLength: fullContent.length }, 'GoogleAI');
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Google's SSE format: "data: {...}\n\n"
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            if (trimmedLine.startsWith('data: ')) {
+              const jsonStr = trimmedLine.substring(6); // Remove "data: " prefix
+              
+              if (jsonStr === '[DONE]') {
+                continue;
+              }
+
+              try {
+                const data = JSON.parse(jsonStr);
+                
+                // Extract text from Gemini stream chunk
+                const textPart = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                
+                if (textPart) {
+                  fullContent += textPart;
+                  
+                  // Call onChunk immediately with the new text
+                  if (onChunk) {
+                    onChunk(textPart);
+                  }
+                }
+              } catch (parseError) {
+                logger.warn('Failed to parse stream chunk', { 
+                  error: parseError instanceof Error ? parseError.message : 'Unknown',
+                  line: jsonStr.substring(0, 100) 
+                }, 'GoogleAI');
+              }
+            }
+          }
+        }
+
+        if (!fullContent) {
+          throw new Error('No content generated from stream');
+        }
+
         const totalDuration = Date.now() - startTime;
-        logger.api('Google AI request completed successfully', {
+        logger.api('Google AI streaming completed successfully', {
           provider: 'Google Gemini',
           model,
           promptLength: prompt.length,
-          responseLength: text.length,
+          responseLength: fullContent.length,
           duration: totalDuration,
-          wordCount: text.split(/\s+/).length
+          wordCount: fullContent.split(/\s+/).length
         }, 'GoogleAI');
         
-        // SMOOTH STREAMING - smaller chunks, faster updates
-        if (onChunk) {
-          const words = text.split(' ');
-          const chunkSize = Math.max(3, Math.floor(words.length / 50)); // 50 chunks = smoother
-          for (let i = 0; i < words.length; i += chunkSize) {
-            const chunk = words.slice(i, i + chunkSize).join(' ') + ' ';
-            onChunk(chunk);
-            await sleep(30); // 30ms delay = smooth feel
-          }
-        }
-        
-        return text;
+        return fullContent;
+
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           logger.warn('Google AI request aborted by user', {}, 'GoogleAI');
@@ -377,7 +432,9 @@ class BookGenerationService {
     throw new Error('Google API failed after retries');
   }
 
-  // MISTRAL AI GENERATION - FIXED STREAMING
+  // ============================================================================
+  // REAL SSE STREAMING - MISTRAL AI
+  // ============================================================================
   private async generateWithMistral(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
@@ -385,11 +442,11 @@ class BookGenerationService {
     let attempt = 0;
     const startTime = Date.now();
 
-    logger.api('Initiating Mistral AI request', {
+    logger.api('Initiating Mistral AI streaming request', {
       provider: 'Mistral AI',
       model,
       promptLength: prompt.length,
-      prompt: prompt,
+      streaming: !!onChunk,
       attempt: 1
     }, 'MistralAI');
 
@@ -399,12 +456,16 @@ class BookGenerationService {
 
         const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${apiKey}` 
+          },
           body: JSON.stringify({
             model: model,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.7,
-            max_tokens: 8192
+            max_tokens: 8192,
+            stream: true // Enable streaming
           }),
           signal
         });
@@ -427,7 +488,7 @@ class BookGenerationService {
           const errorData = await response.json().catch(() => ({}));
           const error = new Error(errorData?.error?.message || `Mistral API Error: ${response.status}`);
           (error as any).status = response.status;
-          logger.error(`Mistral AI request failed`, {
+          logger.error(`Mistral AI streaming request failed`, {
             statusCode: response.status,
             error: errorData?.error?.message,
             duration: requestDuration
@@ -435,32 +496,81 @@ class BookGenerationService {
           throw error;
         }
 
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (!text) throw new Error('Invalid response from Mistral API');
-        
+        // REAL STREAMING IMPLEMENTATION
+        if (!response.body) {
+          throw new Error('Response body is null - streaming not supported');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+        let buffer = '';
+
+        logger.debug('Starting stream processing', {}, 'MistralAI');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            logger.debug('Stream completed', { totalLength: fullContent.length }, 'MistralAI');
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Mistral SSE format: "data: {...}\n\n"
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            if (trimmedLine.startsWith('data: ')) {
+              const jsonStr = trimmedLine.substring(6);
+              
+              if (jsonStr === '[DONE]') {
+                continue;
+              }
+
+              try {
+                const data = JSON.parse(jsonStr);
+                
+                // Extract text from Mistral stream chunk
+                const textPart = data?.choices?.[0]?.delta?.content || '';
+                
+                if (textPart) {
+                  fullContent += textPart;
+                  
+                  if (onChunk) {
+                    onChunk(textPart);
+                  }
+                }
+              } catch (parseError) {
+                logger.warn('Failed to parse stream chunk', { 
+                  error: parseError instanceof Error ? parseError.message : 'Unknown',
+                  line: jsonStr.substring(0, 100) 
+                }, 'MistralAI');
+              }
+            }
+          }
+        }
+
+        if (!fullContent) {
+          throw new Error('No content generated from stream');
+        }
+
         const totalDuration = Date.now() - startTime;
-        logger.api('Mistral AI request completed successfully', {
+        logger.api('Mistral AI streaming completed successfully', {
           provider: 'Mistral AI',
           model,
           promptLength: prompt.length,
-          responseLength: text.length,
+          responseLength: fullContent.length,
           duration: totalDuration,
-          wordCount: text.split(/\s+/).length
+          wordCount: fullContent.split(/\s+/).length
         }, 'MistralAI');
         
-        // SMOOTH STREAMING
-        if (onChunk) {
-          const words = text.split(' ');
-          const chunkSize = Math.max(3, Math.floor(words.length / 50));
-          for (let i = 0; i < words.length; i += chunkSize) {
-            const chunk = words.slice(i, i + chunkSize).join(' ') + ' ';
-            onChunk(chunk);
-            await sleep(30);
-          }
-        }
-        
-        return text;
+        return fullContent;
+
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           logger.warn('Mistral AI request aborted by user', {}, 'MistralAI');
@@ -479,7 +589,9 @@ class BookGenerationService {
     throw new Error('Mistral API failed after retries');
   }
 
-  // ZHIPU AI GENERATION - FIXED STREAMING
+  // ============================================================================
+  // REAL SSE STREAMING - ZHIPU AI
+  // ============================================================================
   private async generateWithZhipu(prompt: string, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<string> {
     const apiKey = this.getApiKey();
     const model = this.settings.selectedModel;
@@ -487,11 +599,11 @@ class BookGenerationService {
     let attempt = 0;
     const startTime = Date.now();
 
-    logger.api('Initiating ZhipuAI request', {
+    logger.api('Initiating ZhipuAI streaming request', {
       provider: 'ZhipuAI',
       model,
       promptLength: prompt.length,
-      prompt: prompt,
+      streaming: !!onChunk,
       attempt: 1
     }, 'ZhipuAI');
 
@@ -501,13 +613,16 @@ class BookGenerationService {
 
         const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${apiKey}` 
+          },
           body: JSON.stringify({
             model: model,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.7,
             max_tokens: 8192,
-            stream: false
+            stream: true // Enable streaming
           }),
           signal
         });
@@ -530,7 +645,7 @@ class BookGenerationService {
           const errorData = await response.json().catch(() => ({}));
           const error = new Error(errorData?.error?.message || `ZhipuAI API Error: ${response.status}`);
           (error as any).status = response.status;
-          logger.error(`ZhipuAI request failed`, {
+          logger.error(`ZhipuAI streaming request failed`, {
             statusCode: response.status,
             error: errorData?.error?.message,
             duration: requestDuration
@@ -538,31 +653,81 @@ class BookGenerationService {
           throw error;
         }
 
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (!text) throw new Error('Invalid response from ZhipuAI API');
-        
+        // REAL STREAMING IMPLEMENTATION
+        if (!response.body) {
+          throw new Error('Response body is null - streaming not supported');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+        let buffer = '';
+
+        logger.debug('Starting stream processing', {}, 'ZhipuAI');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            logger.debug('Stream completed', { totalLength: fullContent.length }, 'ZhipuAI');
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          // ZhipuAI SSE format: "data: {...}\n\n"
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            if (trimmedLine.startsWith('data: ')) {
+              const jsonStr = trimmedLine.substring(6);
+              
+              if (jsonStr === '[DONE]') {
+                continue;
+              }
+
+              try {
+                const data = JSON.parse(jsonStr);
+                
+                // Extract text from ZhipuAI stream chunk
+                const textPart = data?.choices?.[0]?.delta?.content || '';
+                
+                if (textPart) {
+                  fullContent += textPart;
+                  
+                  if (onChunk) {
+                    onChunk(textPart);
+                  }
+                }
+              } catch (parseError) {
+                logger.warn('Failed to parse stream chunk', { 
+                  error: parseError instanceof Error ? parseError.message : 'Unknown',
+                  line: jsonStr.substring(0, 100) 
+                }, 'ZhipuAI');
+              }
+            }
+          }
+        }
+
+        if (!fullContent) {
+          throw new Error('No content generated from stream');
+        }
+
         const totalDuration = Date.now() - startTime;
-        logger.api('ZhipuAI request completed successfully', {
+        logger.api('ZhipuAI streaming completed successfully', {
           provider: 'ZhipuAI',
           model,
           promptLength: prompt.length,
-          responseLength: text.length,
+          responseLength: fullContent.length,
           duration: totalDuration,
-          wordCount: text.split(/\s+/).length
+          wordCount: fullContent.split(/\s+/).length
         }, 'ZhipuAI');
         
-        // SMOOTH STREAMING
-        if (onChunk) {
-          const words = text.split(' ');
-          const chunkSize = Math.max(3, Math.floor(words.length / 50));
-          for (let i = 0; i < words.length; i += chunkSize) {
-            onChunk(words.slice(i, i + chunkSize).join(' ') + ' ');
-            await sleep(30);
-          }
-        }
-        
-        return text;
+        return fullContent;
+
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           logger.warn('ZhipuAI request aborted by user', {}, 'ZhipuAI');
@@ -581,7 +746,7 @@ class BookGenerationService {
     throw new Error('ZhipuAI API failed after retries');
   }
 
-  // ROADMAP GENERATION
+  // ROADMAP GENERATION (unchanged)
   async generateRoadmap(session: BookSession, bookId: string): Promise<BookRoadmap> {
     logger.info('Starting roadmap generation', { 
       bookId,
@@ -702,7 +867,7 @@ Return ONLY valid JSON:
     return roadmap;
   }
 
-  // MODULE GENERATION WITH RETRY - FIXED STREAMING
+  // MODULE GENERATION WITH RETRY - REAL STREAMING
   async generateModuleContentWithRetry(
     book: BookProject,
     roadmapModule: RoadmapModule,
@@ -750,8 +915,9 @@ Return ONLY valid JSON:
 
       const generationStartTime = Date.now();
       
+      // REAL-TIME STREAMING with immediate callback
       const moduleContent = await this.generateWithAI(prompt, book.id, (chunk) => {
-        // Accumulate chunks for smooth streaming
+        // Accumulate chunks for real-time streaming
         const currentText = (this.currentGeneratedTexts.get(book.id) || '') + chunk;
         this.currentGeneratedTexts.set(book.id, currentText);
         
@@ -759,6 +925,7 @@ Return ONLY valid JSON:
         const estimatedLength = 3000;
         const progress = Math.min(95, (currentText.length / estimatedLength) * 100);
         
+        // Update status in real-time as chunks arrive
         this.updateGenerationStatus(book.id, {
           currentModule: {
             id: roadmapModule.id,
@@ -909,7 +1076,7 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
 ### Key Takeaways`;
   }
 
-  // BULK MODULE GENERATION WITH RECOVERY
+  // BULK MODULE GENERATION WITH RECOVERY (unchanged - uses the streaming generateModuleContentWithRetry)
   async generateAllModulesWithRecovery(book: BookProject, session: BookSession): Promise<void> {
     if (!book.roadmap) {
       throw new Error('No roadmap available for module generation');
@@ -1082,7 +1249,7 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
     }
   }
 
-  // RETRY FAILED MODULES
+  // RETRY FAILED MODULES (unchanged - uses streaming)
   async retryFailedModules(book: BookProject, session: BookSession): Promise<void> {
     if (!book.roadmap) {
       throw new Error('No roadmap available');
@@ -1160,7 +1327,7 @@ ${session.preferences?.includePracticalExercises ? '### Practice Exercises' : ''
     }
   }
 
-  // ASSEMBLE FINAL BOOK
+  // ASSEMBLE FINAL BOOK (unchanged - doesn't need streaming for intro/summary)
   async assembleFinalBook(book: BookProject, session: BookSession): Promise<void> {
     logger.info('Starting book assembly', { bookId: book.id }, 'BookAssembly');
     this.updateProgress(book.id, { status: 'assembling', progress: 90 });
